@@ -155,7 +155,7 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 
 #### 쿠버네티스 설치 필요 사항
 * 버추얼박스에서 각 노드에서 복제하면서 반드시 변경해야 하는 설정
-	- 호스트 이름 etc /hostname
+	- 호스트 이름 /etc/hostname
 	- 네트워크 인터페이스 변경
 	- NAT 네트워크 설정 (NAT랑 다름)
 	- (호스트 이름 변경하려면 반드시 리붓)
@@ -213,12 +213,14 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 
 #### 클러스터를 사용 초기 세팅(마스터 노드에서만 할 것)
 * 다음을 일반 사용자 계정으로 실행 콘솔에 출력된 메시지를 복붙
-	- mkdir -p $HOME/.kube
-	- sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-	- sudo chown $(id -u):$(id -g) $HOME/.kube/config
+	```
+	mkdir -p $HOME/.kube
+	sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+	sudo chown $(id -u):$(id -g) $HOME/.kube/config
+	```
 
 * Pod Network 추가
-	- kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+	`kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
 	- root로 위에 명령어를 통해 'config'파일을 만들어야 실행됨
 
@@ -227,8 +229,10 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 * init 명령어 전까지만 수행 (init 명령어 실행하지 마세요)
 
 * 이후 각 노드에서 관리자 권한으로 워커 노드를 참가 시킴 (콘솔에 출력된 메시지를 복붙)
-	- sudo kubeadm join 10.0.2.15:6443 -token xwvbff.5xc67j8qc6ohl2it \
-	-   --discovery-token-ca-cert-hash sha256:e19e9263aeb2340a602c2057966b71551e01a5e287d3f23b05073c7b248932e1
+	```
+	sudo kubeadm join 10.0.2.15:6443 -token xwvbff.5xc67j8qc6ohl2it \
+	   --discovery-token-ca-cert-hash sha256:e19e9263aeb2340a602c2057966b71551e01a5e287d3f23b05073c7b248932e1
+	```
 
 #### Error 발생시
 [참고] https://xoit.tistory.com/94
@@ -255,6 +259,199 @@ Ex) 오류
 
 #### 재설치시 유의상황
 * Kubeadm init 또는 join 명령을 실행할 때 중복된 실행으로 문제가 생기는 경우 kubeadm reset명령을 통해서 초기화한다
+
+
+---
+### 7. GKE를 활용한 쿠버네티스 사용
+
+#### Google cloud 의 관리형 kubernetes 서비스인 Google Kubernetes Engine(GKE)
+* GKE 는 Kubernetes 를 쉽게 사용자가 활용할 수 있도록 관리형으로 제공
+* 규모에 맞춘 컨테이너식 애플리케이션 관리
+* 다양한 애플리케이션 배포
+* 고가용성을 통한 원활한 운영
+* 수요에 맞게 간편하게 확장
+* Google 네트워크에서의 안전한 실행
+* 온프레미스 및 클라우드 간의 자유로운 이동
+
+#### GCP 가입 및 가입오류 해결
+1.회원 가입에서 다음이 눌리지 않는 경우 해결 방법
+	- https://private-space-tistory.com/41에서 자세히 설명
+	- 요약: https ://cloud.google.com/gcp/getting-started/?hl=ko를 접속해서 "콘솔"로 접속하면 가입 오류 없이 회원 가입 가능
+2. 회원가입 시 카드 정보 오류가 발생하는 경우
+	- 회원가입 시 카드 정보 오류가 발생하는 경우 모바일로 접속해서 등록하면 회원 가입 가능한 경우가 있음
+3 사용할 수 없는 결제 정보인 경우
+	- 다른 ID 를 새로 생성하면 해결되는 경우가 있음
+
+#### GCP 프로젝트 생성시 유의사항
+* 프로젝트를 만들때 '위치:회사 조직'을 설정하면 권한이 넘어가 프로젝트 삭제를 못함, 기본값을 사용
+* 기본적으로 기능을 사용할 때 설치됨, GKE를 선택하면 기능 활성화하는데 1분 정도 걸림
+* 클러스터: 마스터 버전 선택시, 구글이 쿠버네티스를 커스텀마이즈하여 사용하기 때문에 업데이트에 시간이 걸림, 기본값 사용 권장
+* GCP 장점: Azure와 다르게 인스턴스 비용 지불 없이, 클러스터에 접속 가능(Google Cloud Shell)
+
+---
+### 9. AWS EKS를 활용한 쿠버네티스 사용
+* GCP와 다르게 프로젝트를 삭제해도, 다른 리소스들이 남음
+	- 일일히 삭제가 필요
+* 유로 서비스이기 때문에 실습없음, 프리티어에 12개월 동안 액세스 가능
+
+#### Amazon Elastic Container Service for Kubernetes(Amazon EKS)
+* AWS에서 Kubernetes를 손쉽게 실행하도록 하는 관리형 서비스
+* 여러 가용 영역에서 Kubernetes 제어 플레인 인스터스를 실행하여 고가용성을 보장
+* 비정상 제어 플레인 인스턴스를 자동으로 감지하고 교체
+* 자동화된 버전 업그레이드를 제공
+* 여러 AWS 서비스와 통합되어 다음을 포함한 애플리케이션에 대한 확장성과 보안을 제공
+	- 컨테이너 이미지용 Amazon ECR
+	- 로드 배포용 Elastic Load Balancing
+	- 인증용 IAM
+	- 격리용 Amazon VPC
+	
+#### 아마존 EKS 시작하기
+* https://docs.aws.amazon.com/ko_kr/eks/latest/userguide/getting-started.html
+* AWS 에서는 EKS 를 시작하는 두 가지 방법을 제공
+	- eksctl 로 시작하기
+		+ Amazon EKS 를 시작하는 가장 빠르고 쉬운 방법
+		+ 클러스터를 생성 및 관리하기 위한 간단한 명령줄 유틸리티인 eksctl 제공
+		+ 필요한 모든 리소스를 설치
+		+ kubectl 명령 줄 유틸리티
+		+ 자격증명이 먼저 필요, Windows에선 에러 발생 가능있음
+	- AWS Management
+		+ AWS Management 콘솔 사용
+		+ Amazon EKS를 시작할 때 필요한 모든 리소스를 생성 가능
+		+ Amazon EKS 또는 AWS CloudFormation 콘솔을 사용하여 각 리소스를 수동으로 생성
+		+ 각 리소스의 생성 방법 및 리소스 간의 상호 작용을 완벽하게 파악 가능
+		+ Amazon EKS를 시작하는 방법으로는 더 복잡하고 시간도 많이 걸림
+
+---
+### 10. 쿠버네티스에서 앱 실행해보기
+
+Ex) main.go
+```go
+package main
+
+import(
+        "fmt"
+        "github.com/julienschmidt/httprouter"
+        "net/http"
+        "log"
+        "os"
+)
+
+func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        hostname, err := os.Hostname()
+        if err == nil {
+                fmt.Fprint(w, "Welcome! " + hostname +"\n")
+        } else {
+                fmt.Fprint(w, "Welcome! ERROR\n")
+        }
+}
+
+func main() {
+        router := httprouter.New()
+        router.GET("/", Index)
+
+        log.Fatal(http.ListenAndServe(":8080", router))
+}
+```
+* Google Cloud Shell 또는 로컬 가상 머신에서 실습
+
+#### Go 언어 설치 및 프로그램 빌드
+* apt install golnag 를 사용해서 고 랭기지를 설치
+* go get 명령을 사용해 외부 라이브러리 임포트
+* go build 명령으로 main go 를 빌드하여 main 파일 생성
+* main 명령 실행 후 정상 동작하는 지 테스트
+
+```bash
+apt install golang
+go get github.com/julienschmidt/httprouter
+go build main.go
+main
+```
+#### dockerfile 작성
+* FROM golang 1.11 버전의 컨테이너 이미지를 사용
+* 로컬 디렉터리의 main 파일을 이미지의 /usr/src/app 디렉터리에 동일한 이름으로 추가
+* 이미지를 실행할 때 /usr/src/app/main 실행
+
+Ex) Dockerfile
+```zsh
+Ubuntu :: ~/http_go # cat Dockerffile
+FROM golang:1.11
+WORKDIR /usr/src/app
+COPY main /usr/src/app
+CMD ["/usr/src/app/main"]
+```
+* 작성 후, 빌드 : docker build -t http-go .
+* 실행 후, 확인 : docker run -d -p 8080:8080 --rm http-go
+
+### 컨테이너 푸시하기
+```bash
+docker tag http-go gasbugs/http-go
+(docker login)
+docker push gasbugs/http-go
+```
+
+---
+#### 처음으로 만드는 쿠버네티스 앱
+* 보통 배포하려는 모든 컴포넌트의 설명이 기술된 JSON 또는 YAML 매니페스트를 준비 필요
+* 이를 위해서는 쿠버네티스에서 사용되는 컴포넌트 유형을 잘 알아야 함
+* 여기서는 명령어에 몇 가지 옵션으로 디스크립션을 간단히 전달하여 한 줄로 앱을 실행
+`$ kubectl create deploy http-go --image=gasbugs/http-go`
+`kubectl expose  deployment http-go --name http-go-svc --port=8080`
+`kubectl get svc -w`
+
+---
+#### 포드란?
+* 포드 하나에는 프로세스(컨테이너)하나를 권장
+
+#### 웹 애플리케이션 만들어보기
+* 실행 중인 포드는 클러스터의 가상 네트워크에 포함돼 있음
+* 어떻게 액세스 할 수 있을까
+* 외부에서 액세스하려면 서비스 객체를 통해 IP 를 노출하는 것이 필요
+* LoadBalancer 라는 서비스를 작성하면 외부 로드 밸런서가 생성
+* 로드 밸런서의 공인 IP를 통해 포드에 연결 가능
+	- 하지만 로컬 쿠버네티스에서는 동작하지 않으며 externalDNS 가 필요함,
+	- 이 기능은 GKE, EKS 같은 클라우드에서 사용 가능(구글 , AWS 계정 필요)
+
+#### 디플로이먼트의 역할
+* 디플로이먼트는 레플리카셋을 생성
+* 레플리카셋은 수를 지정하여 알려주면 그 수만큼 포드를 유지
+* 어떤 이유로든 포드가 사라지면 레플리카셋은 누락된 포드를 대체할 새로운 포드를 생성
+
+#### 서비스의 역할
+* 포드는 일시적이므로 언제든지 사라질 가능성 존재
+* 포드가 다시 시작되는 경우에는 언제든 IP와 ID 변경됨
+* 서비스는 변화하는 포드 IP 주소의 문제를 해결하고 단일 IP 및 포트 쌍에서 여러 개의 포드 노출
+* 서비스가 생성되면 정적 IP 를 얻게 되고 서비스의 수명 내에서는 변하지 않음
+* 클라이언트는 포드에 직접 연결하는 대신 IP 주소를 통해 서비스에 연결
+* 서비스는 포드 중 하나로 연결을 포워딩
+
+#### 서비스 상세
+* 포드의 통신을 관리
+	- 기본적으로 서비스는 로드밸런스 기능을 가짐
+	- 내부통신(web->db: 코드에 링크로 연결(도커), 이름으로 통신(IP가 가변적이라 사용)), 외부 통신 가능
+	- 외부 : '노드'들의 ip:port 통신
+	- 내부 : '포드' 내 통신
+	- 로드밸러서와 노드ip 대역은 같음
+* 서비스없이 포드끼리 IP통신은 가능하나, IP는 가변적이라 서비스가 관리
+* 서비스는 포드와 연결
+
+### !!쿠버네티스 네트워크를 나누는 이유!!
+* '트래픽'을 나누기(분산하기) 위해
+	- pod끼리 통신, 노드끼리 통신, 서비스끼리 통신
+
+#### 애플리케이션의 수평 스케일링
+* 쿠버네티스를 사용해 얻을 수 있는 큰 이점 중 하나는 간단하게 컨테이너의 확장이 가능하다는 점
+* 포드의 개수를 늘리는 것도 쉽게 가능
+* 포드는 디플로이먼트가 관리
+`$ kubectl scale deploy http-go --replicas=3`
+
+#### 직접 앱에 접근하기
+* curl 명령어로 요청
+* external IP 를 할당 받지 못했기 때문에 포드의 힘을 빌려 요청
+`$ kubectl exec http-go-XXXXXX-bt4xq -- curl -s http://10.109.140.155:8080`
+	- 포드를 변경하면서 시도
+	- '--' : kubectl의 명령행 옵션의 끝을 의미
+		+ 더블 대시를 쓰지 않는다면 -S 옵션은 kubectl exec의 옵션으로 해석돼서 다음과 같이 이상한 오류가 발생할
+
 
 ---
  [^출처]
