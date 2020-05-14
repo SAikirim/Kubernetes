@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: rs1
+
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: httpd-pod
+
+  template:
+   metadata:
+     labels:
+       app: httpd-pod
+
+   spec:
+     containers:
+       - name: httpd
+         image: httpd
+         ports:
+           - containerPort: 80
+         volumeMounts:
+           - name: http-volume
+             mountPath: /usr/local/apache2
+
+     volumes:
+       - name: http-volume
+         persistentVolumeClaim:
+           claimName: http-pvc
+

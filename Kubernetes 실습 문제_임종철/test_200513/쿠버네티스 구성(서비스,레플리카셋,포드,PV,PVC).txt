@@ -1,0 +1,20 @@
+* 문제
+서비스(LB 또는 NP)로 연결(이름:src.ext)		svc(ClusterIP)로 연결(이름: svc.int)
+| 연결						| 연결
+replicaset(이름: rs1) 3개의 포드 : httpd			DB Pod(mysql 5.7)(이름: db1)
+| 연결						| 연결
+pvc(포드 3개 연결) - pv 사용(정적, 동적 상관없음)	pvc - pv 사용
+
+
+-- 첨언 --
+* 코드는 pv, pvc를 'hostPath'를 이용하여 구현함(Local(node) 내 스토리지 구성)
+	- 원래대로라면 외부 스토리지를 사용하자!!!
+* 쿠버네티스 클러스터에 MySQL 설치(persistentVolume 과 persistentVolumeClaim 사용)
+https://velog.io/@pa324/%EC%BF%A0%EB%B2%84%EB%84%A4%ED%8B%B0%EC%8A%A4-mysql-%EC%84%A4%EC%B9%98-6bjxv4dcoa
+
+* rook(ceph 사용 가능) - Kubernetes를 위한 오픈 소스, 클라우드 네이티브 스토리지 
+https://rook.io/
+
+---
+* 가능하면, 'https://cleanupthedesk.tistory.com/16'를 참고해 'http'와 'DB'를 연결해 보자!
+

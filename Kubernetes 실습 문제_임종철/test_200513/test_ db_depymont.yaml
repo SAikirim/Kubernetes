@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db1
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-pod
+
+  template:
+   metadata:
+     labels:
+       app: db-pod
+   spec:
+     containers:
+       - name: mysql
+         image: mysql:5.7
+         ports:
+           - containerPort: 8080
+         volumeMounts:
+           - name: testdb-volume
+             mountPath: /test/
+
+     volumes:
+       - name: testdb-volume
+
