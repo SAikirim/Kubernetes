@@ -22,7 +22,7 @@ spec:
            - containerPort: 80
          volumeMounts:
            - name: http-volume
-             mountPath: /usr/local/apache2
+             mountPath: /var/log/httpd
 
      volumes:
        - name: http-volume
