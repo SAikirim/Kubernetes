@@ -3,13 +3,17 @@ kind: PersistentVolume
 metadata:
   name: http-pv
   labels:
-    type: local
-  
+   # type: local
+    type: nfs
+
 spec:
-  storageClassName: manual
+#  storageClassName: manual   # nfs사용시 생략
   capacity:
     storage: 5Gi
   accessModes:
     - ReadWriteMany
-  hostPath:
-    path: "/mnt/data2"
+  nfs:
+    server: 192.168.10.200
+    path: /mnt/nfs
+#  hostPath:
+#    path: "/mnt/data2"

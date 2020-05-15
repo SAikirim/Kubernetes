@@ -7,8 +7,11 @@ pvc(포드 3개 연결) - pv 사용(정적, 동적 상관없음)	pvc - pv 사용
 
 
 -- 첨언 --
-* 코드는 pv, pvc를 'hostPath'를 이용하여 구현함(Local(node) 내 스토리지 구성)
+* db코드는 pv, pvc를 'hostPath'를 이용하여 구현함(Localhost(node) 내 스토리지 구성)
 	- 원래대로라면 외부 스토리지를 사용하자!!!
+* http코드는 pv를 'nfs'를 이용하여 구현함(mster(node) 내 스토리지 구성)
+	- 노드에는 nfs 클라이언트 설치 필요!
+
 * 쿠버네티스 클러스터에 MySQL 설치(persistentVolume 과 persistentVolumeClaim 사용)
 https://velog.io/@pa324/%EC%BF%A0%EB%B2%84%EB%84%A4%ED%8B%B0%EC%8A%A4-mysql-%EC%84%A4%EC%B9%98-6bjxv4dcoa
 

@@ -4,7 +4,7 @@ metadata:
   name: http-pvc
   
 spec:
-  storageClassName: manual
+#  storageClassName: manual     # nfs사용시 생략
   accessModes:
     - ReadWriteMany
   resources:
