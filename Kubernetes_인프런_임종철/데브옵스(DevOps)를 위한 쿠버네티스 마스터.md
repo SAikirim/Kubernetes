@@ -458,6 +458,364 @@ docker push gasbugs/http-go
 	- 하나의 머신으로 쿠버네티스 구성 가능
 	- 적은 리소스로 작동 가능
 	- 많은 리소스를 사용하는 어플리케이션 사용은 힘듦
+	- 쿠버네티스 환경설정이 일부 누락되어 있을 수 있음
+* 미니큐브는 sudo 명령어가 잘 안됨
+	- `sudo chmod 666 /var/run/docker.sock`
+	- 미리 관리자 권한 없이 사용할 수 있게 만듦
+	
+![minikube-architecture](./03. 가벼운 환경을 위한 미니큐브 설치/03_00_minikube-architecture.png)[^출처1]
+
+### Minikube에서 어플리케이션 배포
+Ex) 에코용 서버 디플로이먼트
+```bash
+$ kubectl create deploy hello-minikube --image=k8s.gcr.io/echoserver:1.10
+
+$ kubectl expose deploy hello-minikube --type=NodePort --port=8080
+$ kubectl get svc
+NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+hello-minikube   NodePort    10.107.124.18   <none>        8080:30403/TCP   5s
+kubernetes       ClusterIP   10.96.0.1       <none>        443/TCP          19m
+```
+* 'NodePort' : 일종의 포트 포워드
+
+Ex) 주소 확인
+```bash
+$ kubectl get svc,node -o=wide
+NAME                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+service/hello-minikube   NodePort    10.107.124.18   <none>        8080:30403/TCP   15m   app=hello-minikube
+service/kubernetes       ClusterIP   10.96.0.1       <none>        443/TCP          35m   <none>
+
+NAME            STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE       KERNEL-VERSION      CONTAINER-RUNTIME
+node/minikube   Ready    master   35m   v1.18.0   172.17.0.2    <none>        Ubuntu 19.10   4.18.0-20-generic   docker://19.3.2
+```
+* `$ curl 172.17.0.2:30403`로 접속 확인
 
 ---
- [^출처]
+## 04. 쿠버네티스 핵심 개념
+
+---
+### 1. 큐브시스템 컴포넌트 살펴보기
+
+#### 큐브 API 서버
+⚫ 쿠버네티스 시스템 컴포넌트는 오직 API 서버와 통신
+⚫ 컴포넌트끼리 서로 직접 통신 X
+⚫ 때문에 etcd와 통신하는 유일한 컴포넌트 API 서버
+⚫ RESTful API를 통해 클러스터 상태를 쿼리,수정할 수 있는 기능 제공
+* API 서버의 구체적인 역할
+	➢ 인증 플러그인을 사용한 클라이언트 인증
+	➢ 권한 승인 플러그인을 통한 클라이언트 인증
+	➢ 승인 제어 플러그인을 통해 요청 받은 리소스를 확인/수정
+	➢ 리소스 검증 및 영구 저장
+
+#### 큐브 컨트롤러 매니저
+⚫ API 궁극적으로 아무 역할을 하지 않음
+⚫ 컨트롤러에는 다양한 컨트롤러가 존재
+⚫ 이 컨트롤러는 API에 의해 받아진 요청을 처리하는 역할
+	➢ 레플리케이션 매니저(레플리케이션컨트롤러)
+	➢ 레플리카셋, 데몬셋, 잡 컨트롤러
+	➢ 디플로이먼트 컨트롤러
+	➢ 스테이트풀셋 컨트롤러,
+	➢ 노드 컨트롤러
+	➢ 서비스 컨트롤러
+	➢ 엔드포인트 컨트롤러
+	➢ 네임스페이스 컨트롤러
+	➢ 영구 볼륨 컨트롤러
+	➢ etc
+
+#### 큐브 스케줄러
+⚫ 일반적으로 실행할 노드를 직접 정해주지 않음
+⚫ 요청 받은 리소스를 어느 노드에 실행할지 결정하는 역할
+⚫ 현재 노드의 상태를 점검하고 최상의 노드를 찾아 배치
+⚫ 다수의 포드를 배치하는 경우에는 라운드로빈을 사용하여 분산
+
+### Kube system Component
+
+#### 쿠버네티스 설정 파일 확인하기
+* 일반적으로 리눅스에 설치하면 /etc/kubernetes/manifest 에 설정 파일 존재
+* GCP의 경우에는 /home/Kubernetes/kube-manifests/Kubernetes/gci-trusty에 설정 파일 존재
+	- 개발자들에 의해 배치가 달라질 수도 있음!!
+
+---
+### 2. etcd 데이터베이스 살펴보기
+* 멀티 Key-Value 데이터 셋 가능
+
+#### etcdctl 다운로드
+* https://github.com/etcd-io/etcd/releases
+	- 자기 환경에 맞는 버전을 다운로드(wget 사용)
+	- 당시 버전 'etcd-v3.4.7-linux-amd64.tar.gz'
+
+Ex) etcd 데이터 확인
+```bash
+$ sudo ETCDCTL_API=3 ./etcdctl --endpoints 127.0.0.1:2379 --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key get / --prefix --keys-only
+```
+* API 버전을 환경변수에 등록
+* SSL 기반으로 통신하기 때문에, certificate, 개인키, 공개키가 필요
+* get을 사용해 '키'만 확인
+
+Ex) etcd 데이터 입력 및 확인
+```bash
+$ sudo ETCDCTL_API=3 ./etcdctl --endpoints 127.0.0.1:2379 \
+--cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key \
+put key1 value1
+
+$ sudo ETCDCTL_API=3 ./etcdctl --endpoints 127.0.0.1:2379 \
+--cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key \
+get key1
+```
+
+#### 쿠버네티스 ETCD 데이터베이스 키 구조
+* ETCD 안에 쿠버네티스의 전체 설정 정보를 저장
+![etcd 키 구조](./04. 쿠버네티스 핵심 개념/02_00_etcd키구조.png)
+
+
+---
+### 3. 포드 소개
+
+#### 포드의 관리
+* 두 가지 장점
+	- 포드는 밀접하게 연관된 프로세스를 함께 실행하고 마치 하나의 환경에서 동작하는 것처럼 보임
+	- 그러나 동일한 환경을 제공하면서 다소 격리된 상태로 유지
+
+#### 플랫 인터 포드 네트워크 구조
+* 쿠버네티스 클러스터의 모든 포드는 공유된 단일 플랫 네트워크 주소 공간에 위치
+* 포드 사이에는 NAT 게이트웨이가 존재하지 않음
+
+#### 컨테이너를 포드 전체에 적절하게 구성하는 방법
+⚫ 다수의 포드로 멀티티어 애플리케이션 분할하기
+⚫ 각각 스케일링이 가능한 포드로 분할하기
+* 극단적으로 빠른 네트워크 통신을 위해, 사이드카, 파일시스템 공유, 로그 백업 등으로 사용할 때만 같은 포드 내에 컨테이너 구성
+
+#### 포드 정의
+* apiVersion kind 메타 데이터 스펙 스테이터스 로 구성
+* 포드 정의 구성 요소
+	- apiVersion : 쿠버네티스 api의 버전을 가리킴
+	- kind : 어떤 리소스 유형인지 결정(포드 레플리카컨트롤러 서비스 등)
+	- 메타데이터 : 포드와 관련된 이름, 네임스페이스, 레이블, 그 밖의 정보 존재
+	- 스펙 :  컨테이너, 볼륨 등의 정보
+	- 상태 : 포드의 상태, 각 컨테이너의 설명 및 상태, 포드 내부의 IP 및 그 밖의 기본 정보 등
+		+ '상태'는 쿠버네티스가 작성함
+
+###### 모든 API에 대한 내용
+참고: http://kubernetes.io/docs/reference/
+
+#### YAML 작성 및 추가 팁
+* 'http://kubernetes.io'에서 검색
+* `kubectl explain pod`에서 링크로 작성방법 확인 가능
+* `kubectl annotate pod http-go test1234=test1234`
+	- 주석을 넣기 가능, yaml파일로도 가능
+	- `kubectl get pod  -o yaml`으로 확인 가능
+* `kubectl delete pod --all` : 모든 pod 삭제
+* `kubectl logs http-go`
+	- 포드의 로그 가져오기
+
+##### 컨테이너에서 호스트로 포트 포워딩
+* 디버깅 혹은 다른 이유로 서비스를 거치지 않고 특정 포드와 통신하고 싶을 때 사용
+	```bash
+	kubectl port forward http go 8080 :8080
+	$ bg
+	$ curl 127.0.0.1:8888
+	```
+
+---
+### 4. 라이브니스 레디네스 프로브 구성
+* Liveness, Readiness and Startup Probes
+	- Liveness Probe
+		+ 컨테이너 살았는지 판단하고 다시 시작하는 기능
+		+ 컨테이너의 상태를 스스로 판단하여 교착 상태에 빠진 컨테이너를 재시작
+		+ 버그가 생겨도 높은 가용성을 보임
+
+	- Readiness Probe
+		+ 포드가 준비된 상태에 있는지 확인하고 정상 서비스를 시작하는 기능
+		+ 포드가 적절하게 준비되지 않은 경우 로드밸런싱을 하지 않음
+	- Startup Probe
+		+ 애플리케이션의 시작시기 확인하여 가용성을 높이는 기능
+		+ Liveness와 Readiness의 기능을 비활성화
+			- 컨테이너가 시작하는데, 위의 기능들이 활성화되어 있으면, 시작이 늦어질 것임 또는 부팅이 오래 걸리는 컨테이너를 위해 사용
+
+#### 라이브니스 레디네스 프로브 구성
+* Liveness 커맨드 설정 파일 존재 여부 확인
+	- 성공: 0 / 실패: 그 외 값
+Ex) pods/probe/exec-liveness.yaml 
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    test: liveness
+  name: liveness-exec
+spec:
+  containers:
+  - name: liveness
+    image: k8s.gcr.io/busybox
+    args:
+    - /bin/sh
+    - -c
+    - touch /tmp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+* Liveness 웹 설정 http 요청 확인
+	- 성공: 200이상 400미만 / 실패: 그 외 값
+Ex) pods/probe/http-liveness.yaml 
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    test: liveness
+  name: liveness-http
+spec:
+  containers:
+  - name: liveness
+    image: k8s.gcr.io/liveness
+    args:
+    - /server
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+        httpHeaders:
+        - name: Custom-Header
+          value: Awesome
+      initialDelaySeconds: 3
+      periodSeconds: 3
+
+```
+
+* Readiness TCP 설정
+* Liveness TCP 설정
+Ex) pods/probe/tcp-liveness-readiness.yaml 
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: goproxy
+  labels:
+    app: goproxy
+spec:
+  containers:
+  - name: goproxy
+    image: k8s.gcr.io/goproxy:0.1
+    ports:
+    - containerPort: 8080
+    readinessProbe:					# 준비 프로브는 8080 포트를 검사 -> 통신이 되면: 서비스를 시작해도 된다.
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    livenessProbe:					# 통신이 되면: 컨테이너를 재시작하지 않아도 된다
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+```
+
+* Statup Probe
+	- 시작할 때까지 검사를 수행
+	- http 요청을 통해 검사
+	- 30 번을 검사하며 10 초 간격으로 수행
+	- 300 30 10 초 후에도 포드가 정상 동작하지 않는 경우 종료
+	- 300 초 동안 포드가 정상 실행되는 시간을 벌어줌
+Ex) Startup Probe 예제 
+```yaml
+~생략~
+    ports:
+	  - name: libeness-port
+        containerPort: 8080
+		hostPort: 8080
+
+    livenessProbe:
+      httpGet:
+	    path: /healthz
+        port: liveness-port
+      failureThreshold: 1
+      periodSeconds: 10
+	
+	startupProbe:
+	  httpGet:
+	    path: /healthz
+		port: liveness-port
+      failureThreshold: 30   # 30번을 실패해야, 실패한 것으로 간주
+	  periodSenconds: 10
+```
+
+---
+### 5. 레이블과 셀렉터
+
+#### 레이블을 이용한 포드 구성
+⚫ 레이블이란?
+	➢ 모든 리소스를 구성하는 매우 간단하면서도 강력한 쿠버네티스 기능
+	➢ 리소스에 첨부하는 임의의 키/값 쌍(예 app: test)
+	➢ 레이블 셀렉터를 사용하면 각종 리소스를 필터링하여 선택할 수 있음
+	➢ 리소스는 한 개 이상의 레이블을 가질 수 있음
+	➢ 리소스를 만드는 시점에 레이블을 첨부
+	➢ 기존 리소스에도 레이블의 값을 수정 및 추가 가능
+	➢ 모든 사람이 쉽게 이해할 수 있는 체계적인 시스템을 구축 가능
+		✓ app: 애플리케이션 구성요소, 마이크로서비스 유형 지정
+		✓ rel: 애플리케이션의 버전 지정
+![레이블(app,rel)](./04. 쿠버네티스 핵심 개념/05_00_레이블app,rel.png)
+
+#### 레이블을 추가 및 수정하는 방법
+* 새로운 레이블을 추가할 때는 label 명령어를 사용
+	```bash
+	$ kubectl label pod http-go-v2 test=foo`
+	pod/http-go-v2 labeled
+	```
+	
+* 기존의 레이블을 수정할 때는 --overwrite 옵션을 주어서 실행
+	```bash
+	$ kubectl label pod-http-go v2 rel=beta
+	error: 'rel' already has a value (canary), and --overwrite is false
+	
+	$ kubectl label pod http-go-v2 rel=beta --overwrite
+	pod/http-go-v2 labeled
+	```
+
+* 레이블 삭제
+	`$ kubectl label pod http-go-v2 rel-`
+	- 레이블 키 이름에 '-'를 붙임
+
+#### 레이블 확인하기
+* 레이블 보여주기
+	`$ kubectl get pod --show-labels`
+
+* 특정 레이블 컬럼으로 확인
+	`$ kubectl get pod -L app,rel`
+
+* 레이블로 필터링하여 검색
+	```bash
+	$ kubectl get pod --show-labels -l 'env'
+	$ kubectl get pod --show-labels -l '!env'
+	$ kubectl get pod --show-labels -l 'env!=test'
+	$ kubectl get pod --show-labels -l 'env!=test,rel=beta'
+	```
+#### 레이블 배치 전략
+* 확장 가능한 쿠버네티스 레이블 예제
+
+레이블 키|설명|레이블 값
+:-:|:-:|:-:
+Application ID/Application-name| 응용 프로그램 이름 또는 ID| my-awesome-app/app-nr-2345
+Version-nr| 버전 번호| ver-0.9
+Owner| 개체가 속한 팀 또는 개인| Team-kube/Josh
+Stage/Phase| 개발 단계 또는 위치| Dev, staging, QA, Canary, Production
+Release-nr| 릴리즈 번호| release-nr-2.0.1
+Tier| 앱이 속한 계층| front-end/back-end
+Customer-facing| 고객에게 직접 서비스 하는 앱 여부| Yes/No
+App-role| 앱의 역할| Cache/Web/Database/Auth
+Project-ID| 연관된 프로젝트 ID| my-project-276
+Customer-ID| 자원을 할당한 고객 ID| customer-id-29
+
+
+
+
+![etcd 키 구조](./04. 쿠버네티스 핵심 개념/)
+
+---
+ [^출처]:  Minikube 설치 및 사용 방법|작성자 일선스
+ [^출처1]: https://blog.codonomics.com/2019/02/loadbalancer-support-with-minikube-for-k8s.html
