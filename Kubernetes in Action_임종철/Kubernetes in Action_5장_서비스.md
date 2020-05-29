@@ -236,12 +236,32 @@ spec:
   selector:
     app: kubia		
 ```
-![5장](./Kubernetes in Action_5장_서비스/5장_02.png)
+![NodePort](./Kubernetes in Action_5장_서비스/5장_02_NodePort.png)
 
 
 #### 5.3.2 외부 로드 밸런서를 이용한 서비스 노출
 * 로드 밸런서는 자신만의 고유하면서 외부에서 액세스가 가능한 IP 주소를 갖고 모든 연결을 서비스로 리다이렉트함
 * 로드 밸런서의 IP 주소를 통해 서비스에 액세스할 수 있음
+* LoadBalancer 서비스를 지원하지 않는 환경에서 실행하면
+	- 밸런서는 프로비전되지 않을 것임
+	- LoadBalancer 서비스는 NodePort 서비스의 확장이기 때문에 서비스는 NodePort 서비스처럼 동작할 것임
+
+##### LoadBalancer 서비스 생성
+Ex) LoadBalancer 타입 서비스 정의(kubia-svc-.yaml)
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubta-loadbalancer
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: kubia		
+```
+![LoadBalancer](./Kubernetes in Action_5장_서비스/5장_03_로드밸런서.png)
 
 #### 5.3.3 외부 연결의 특성
 
