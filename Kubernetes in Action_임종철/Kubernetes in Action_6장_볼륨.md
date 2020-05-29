@@ -271,32 +271,112 @@ $ kubectl exec -it mongodb mongo
 #### 6.6.1 StorageClass 리소스를 통해 사용 가능한 스토리지 유형 정의
 * 사용자가 PersistentVolumeClaim을 생성해 새로운 영구 볼륨을 프로비저닝하려면 관리자가 하나 이상의 스토리지 할당 리소스를 생성해야 함
 	
-Ex) PersistentVolumeClaim 볼륨을 사용하는 포드(mongodb-pod-pvc.yaml)
+Ex) StorageClass 정의(storageclass-fast-gcepd.yaml)
+```yaml
+apiverston: storaee.K8s.io/v1
+Kind: StorageClass
+metadata:
+  name: fast
+porovisioner: Kubernetes.io/gce-pd		# PersistentVolume 프로비저닝에 사용할 볼륨 플러그인
+parameters:
+  type: pd-ssd
+  zone: europe-westl-b
+```		
+* StorageClass리소스는 PersistentVolumeClaim이 이 스토리지클래스를 요청할 때, PersistentVolume을 프로비저닝하는 데 사용해야 함
+* 매개 변수는 제공 업쳬에 전달됨
+	- 여기선 구글 컴퓨트 엔진(GCE) 영구 디스크(PD) 공급 업쳬를 사용
+	- 이는 쿠버네티스가 GCE에서 실행 중일 때 사용할 수 있음을 의미함
+
+###### 참고
+미니큐브를 사용하는 경우 storage-fasthostpath.com 파일을 배포한다.
+
+#### 6.6.2 PersistentVolumeClaim의 스토리지 클래스 요청
+
+##### 특정 스토리지 클래스를 요청하는 PVC 정의 생성
+Ex) 동적 프로비저닝의 PVC(mongodb-pvc-dp.yaml)
 ```yaml
 apiVersion: v1
-kind: Pod
+kind: PersistentVolumeClaim
 metadata:
-  name: mongodb
+  name: mongodb-pvc			# 클레임의 이름(클레임을 포드의 볼륨으로 사용할 때 필요)
 
 spec:
-  containers:
-    - name: mongodb
-	  image: mongo
-	  ports:
-	    - containerPort: 27017
-		  protocol: TCP
-	  
-      volumeMounts:
-        - name: mongodb-data
-		  mountPath: /data/db
+  storageClassName: fast	# 이 PVC는 사용자 지정 스토리지 클래스를 요청함
+  resources:
+    requests:
+	 storage: 100Mi			
+  accessModes:
+    - ReadWriteOnce			# 스토리지가 단일 클라이언트를 지원(읽기/쓰기)
+```
+* 사용할 스토리지클래스도 지정 
+	- 클레임을 생성할 때 PersistentVolume은 fast 스토리지클래스 리소스에서 참조되는 제공자에 의해 생성됨
+* 기존의 수동으로 프로비저닝된 영구 볼륨이 PersistentVolumeClaim과 일치하는 경우에도 제공 프로그램이 사용됨
 
-  volumes:
-    - name : mongodb-data
-      persistentVolumeClaim:
-        claimName: mongodb-pvc		# 포드 볼륨에서 이름으로 PersistentVolumeClaim 참고
-```		
+###### 참고
+* PVC에서 존재하지 않는 스토리지 클래스를 참조하면 PV의 프로비저닝이 실패한다. (PVC에 대한 설명을 사용할 때 프로비저닝 실패 이벤트가 표시됨)
+
+##### 생성된 PVC 및 동적으로 프로비저닝된 PV 검사
+Ex) PVC 및 PV 확인
+```bash
+$ kubectl get pvc mongodb-pvc
+
+$ kubectl get pv
+```
+* 동적 프로비저닝된 PV의 클레임 정책는 삭제(Delete)
+
+Ex) GCE 영구 디스크 확인
+```bash
+$ gcloud compute dtsks list
+NAME						ZONE				SIZE_GB	TYPE STATUS		STATUE
+gke-kubia-dyn-pvc-1e6bc048	eu rooe-west 1-d	1		pd-ssd 			READY
+gke-kubia-default-pool-7ldf	euroae-westl-d		100		pd-standard 	READY
+gke-kubta-default-paol-79cd	euroae-westi-a		100		pd-standard 	READY
+gke-kubia-default-paol-b1c4	eu rooe-west i-a	100		pd-standard 	READY
+mongodb						eu roae-west i-a	1		pd-standard 	READY
+```
+* 첫 번째 영구 디스크의 이름은 해당 디스크가 동적으로 프로비저닝 됐음을 나타냄
+
+##### 스토리지 클래스 사용 방법
+* 클러스터 관리자
+	- 성능이나 기타 특성이 다른 여러 스토리지클래스를 생성할 수 있음
+* 개발자
+	- 각 클레임에 가장 적합한 클레임을 결정함
+* 스토리지클래스의 좋은 점은 클레임 내용이 이름을 지칭
+	- PVC 정의는 스토리지클래스 이름이 모두 동일한 경우, 다른 클러스터에 이식할 수 있음
+<!-- Kubernetes in Actio의 p290 참고 -->
+
+#### 6.6.3 스토리지 클래스를 지정하지 않고 동적 프로비저닝
+
+##### 스토리지 클래스를 지정하지 않고 PersistentVolumeClaim 생성
+Ex) 스토리지 클래스 정의 없는 PVC(mongodb-pvc-dp-nostorageclass.yaml)
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc2
+
+spec:
+  resources:
+    requests:
+	 storage: 100Mi			
+  accessModes:
+    - ReadWriteOnce			# 스토리지가 단일 클라이언트를 지원(읽기/쓰기)
+```
+* storageClassName 속성을 지정하지 않음
+	- PVC를 만들 때 기본 값으로 표시된 스토리지클래스는 모두 사용함
 	
+##### 사전 프로비저닝된 영구 볼륨 중 하나에 구속될 영구 볼륨 복제 강제
+* storageClassName 속성을 빈 문자열로 사용
+	- 사전에 배포된 PersistentVolume을 사용하려면 StorageCtassName을 "" 로 명시적으로 설정해야 함
+	- `storageClassName: ""`
 	
+##### 동적 PersistentVolume 프로비저닝의 전체적인 그림 이해
+* 영구 스토리지를 포드에 부착하는 가장 좋은 방법
+	- PVC(명시적으로 지정된 스토리지가 있는 경우 StorageClassName)와 포드(PVC 이름으로 표시된 포드)만 생성
+	- 다른 모든 것은 동적인 __PersistentVolume 제공자__가 처리
+![PV의 동적 프로비저닝.](./Kubernetes in Action_6장_볼륨/6장_6.3_00_PV의동적프로비저닝.png)
+
+
 ---
 ### 6.7 PersistentVolume and PersistentVolumeClaim[^조대협의 블로그]
 * 일반적으로 디스크 볼륨을 설정하려면 물리적 디스크를 생성해야 함
@@ -456,6 +536,7 @@ spec:
 
 ##### Storage Class 
 * 정의한 스토리지 클래스는 PVC 정의시에, storageClassName에 적으면 PVC에 연결이 되고, 스토리지 클래스에 정해진 스펙에 따라서 물리 디스크와 PV를 생성하게 됨
+* Dynamic Provisioning에 의해 새롭게 생성될 PV, 물리적 Disk의 특성을 정의하는 일종의 __템플릿__이라고 이해할 수 있음
 
 Ex) AWS EBS 디스크에 대한 스토리지 클래스 지정한 예
 ```yaml
@@ -492,4 +573,5 @@ parameters:
   
 ---
 ## 출처
+[^출처]: Kubernetes in Action-마르코 룩샤-에이콘
 [^조대협의 블로그]: https://bcho.tistory.com/1259 
