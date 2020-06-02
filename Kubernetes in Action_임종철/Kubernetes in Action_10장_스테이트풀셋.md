@@ -1,161 +1,18 @@
 # Kubernetes in Action
 
 ---
-## 5장 볼륨：클라이언트가 포드를 검색하고 통신을 가능하게 함
+## 10장 스테이트풀셋：복제된 스테이트풀 어플리케이션 배포하기
 
 ---
-### 5.1 서비스 소개
-![서비스 기본 구조](./Kubernetes in Action_5장_서비스/5장_00_서비스기본구조.png)
+### 10.1 스테이트풀 포드 복제
 
-#### 5.1.1 서비스 생성
+---
+#### 10.1.1 각 포드가 분리된 저장소를 갖도록 여러 복제본 실행
 
-##### kubecti expose를 통한 서비스 생성
-Ex) kubia-svc.yanil
-```bash
-kubectl expose deployment hello-world --type=LoadBalancer --name=my-service
-```
-
-##### YAML 디스크립터를 통한 서비스 생성
-
-Ex) 서비스의 정의(kubia-svc.yaml)
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: kubia
-
-spec:
-  ports:
-    - port: 80 			# 서비스가 사용할 포트
-      targetPort: 8080	# 서비스가 포워드할 컨테이너 포트
-  selector:				# 라벨이 app=kubia인 모든 포드는 이 서비스에 속한다.
-    app: kubia
-```
-* 80 port로 들어오는 연결을 허용하고 각 연결을 대상으로 app=kubta 라벨 셀렉(label selector)에 매칭되는 포드 중 하나를 8080 포트로 라우팅함
-
-##### 클러스터 안에서 서비스 테스트
-* 확실한 방법은 서비스의 클러스터 IP주소로 요청을 보내고 응답을 로그로 남기는 포드를 생성하는 것
-* 노드 중 하나로 ssh 접속을 수행 하고 curl 명령을 사용
-* Kubectl exec 명령어를 통해 이미 존재하는 포드들 중 하나에서 curl 명령을 수행
-
-##### 원격으로 실행 중인 컨테이너에 명령에 실행
-```bash
-$ kubectl exec kubia-7nog1 -- curl -s http://10.11.249.153
-```
-
-#### 동일한 서비스에서 여러 개의 포트 노출
-Ex) 서비스의 정의(다중 포트 설정하기)
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: kubia
-
-spec:
-  ports:
-    - name: http
-	  port: 80 			# 서비스가 사용할 포트
-      targetPort: 8080	# 서비스가 포워드할 컨테이너 포트
-    - name: https
-	  port: 443
-	  targetPort: 8443
-  selector:				# 라벨이 app=kubia인 모든 포드는 이 서비스에 속한다.
-    app: kubia
-```
-
-#### 이름이 지정된 포트 사용
-Ex) 포드 정의에 포트 이름 설정하기
-```yaml
-kind: pod
-spec:
-  containers:
-    - name: kubia
-	  ports:
-	    - name: http			# 컨테이너 포트 8080은 http 이름으로 설정한다.
-		  containerPort: 8080
-		- name: https
-		  containerPort: 8443
-```
-
-Ex) 서비스에 이름 지정된 포트 참조하기
-```yaml
-apiVersion: v1
-kind: Service
-
-spec:
-  ports:
-    - name: http
-	  port: 80 			# 포트 80은 http라 불리는 컨테이너 port에 매핑된다.
-      targetPort: http
-    - name: https
-	  port: 443
-	  targetPort: https
-```
-* 포트 이름을 지정하는 것의 가장 큰 이점은 서비스 스펙의 변경 없이 포트 번호를 변경할 수 있음
-	- 포트가 현재 http라는 이름으로 8080 포트를 사용하더라도 후에 필요에 의해 포트를 80으로 변경하는 것이 가능
+---
+#### 10.1.2 각 포드에 안정적인 ID 제공
 
 
-#### 5.1.2 서비스 검색
-
-##### 환경 변수를 이용한 서비스 검색
-Ex) 컨테이너 내의 서비스와 연관된 환경 변수
-```
-$ kubectl exec kubta-3tn1y env
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-HOSTNAME=kubia-3in1v
-KUBERNETES_SERVICE_HOST=10.111.240.1
-KUBERNETES_SERVICE_PORT=443
-...
-KUBIA_SERVICE_HOST=10.111.249.153 	# 서비스의 클러스터 IP
-KUBIA_SERVICE_PORT=80				# 서비스가 사용 가능한 포트
-...
-```
-
-##### DNS를 이용한 서비스 검색
-* kube-dns가 DNS 서버를 실행함
-	- 이 DNS서버는 클러스터에서 실행하는 다른 모든 포드가 자동적으로 사용하도록 구성됨
-* 각 서비스는 내부 DNS 서버에서 DNS 항목을 가져옴
-	- 서비스 이름을 알고 있는 클라이언트 포드는 환경 변수를 사용하는 대신 FQDN(정규화된 도메인 이름)을 통해 액세스할 수 있음
-
-##### FQDN을 이용한 서비스 연결
-아래의 FQDN을 통해 백엔드 데이터베이스 서비스에 연결할 수 있음
-```bash
-backend-database.default.svc.cluster.local
-```
-* backend-database : 서비스 이름 
-* default : 서비스가 정의된 네임스페이스
-* svc.cluster.local : 모든 클러스터의 로컬 서비스 이름
-* 서비스로 연결할 경우
-	- 생략이 가능해
-	- `backend-database`만으로 서비스를 지칭 가능
-* __기존 포드 내두에서 이를 수행해야 함__
-
-##### 포드 컨테이너의 셸 실행
-* 이 작업을 하려면 셀 바이너리 실행 파일이 컨테이너 이미지에 있어야 함
-```bash
-$ kubectl exec -it kubia-3tn1y bash
-root@kubia-3in1y:/#
-```
-
-Ex) 서비스에 액세스
-```
-root@kubia-3tnly:/# curl http://kubia.default.svc.cluster.local
-You've hit kubia-5asi2
-
-root@kubia-3tnly:/# curl http://kubia.default
-You've hit kubia-3inly
-
-root@kubia-3tnly:/# curl http://kubia
-You've hit kubia-8awf3
-```
-
-Ex) 작동 원리(이유)
-```
-root@kubia-3tnly:/# cat /etc/resolv.conf
-nameserver 10.96.0.10
-search default.svc.cluster.local svc.cluster.local cluster.local localdomain
-options ndots:5
-```
 
 ---
 ### 5.2 클러스터 외부 서비스에 연결
@@ -767,7 +624,7 @@ Address: 10.44.0.1
 |
 [노드]
 |
-[인그레스]/[서비스]	: 해드리스(None) 서비스 생성시 룩업을 통해 포드 IP 노출 가능
+[서비스]	: 해드리스(None) 서비스 생성시 룩업을 통해 포드 IP 노툴 가능
 |
 [엔드포인트] 
 |
