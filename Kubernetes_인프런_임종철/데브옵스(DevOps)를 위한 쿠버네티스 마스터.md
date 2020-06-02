@@ -1,6 +1,5 @@
 # 데브옵스(DevOps)를 위한 쿠버네티스 마스터
 
-
 ---
 ## 01. (쿠버네티스 들어가기 앞서) 왕초보도 따라하는 도커 기초
 
@@ -147,7 +146,6 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 * 단일 마스터 노드에서 실행하거나 여러 노드로 분할되고 복제돼 고가용성을 보장
 * 클러스터의 상태를 유지하고 제어하지만 애플리케이션을 실행하지 않음
 
-
 ---
 ### 2. 클러스터 설치 브리핑
 * Master, Worker1, Worker2로 구성 실습
@@ -176,8 +174,9 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 #### 쿠버네티스 우분투에 설치
 * 다음 내용을 install.sh 파일에 작성하고 chmod로 권한을 주고 실행
 * 쿠버네티스 설치 사이트 아래 스크립트 내용이 있음
-	- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
-
+	
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+	
 * 신뢰할 수 있는 APT 키를 추가
 	- apt-get update && apt get install -y apt-transport-https curl
 	- curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
@@ -221,14 +220,14 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 
 * Pod Network 추가
 	`kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
+	
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
 	- root로 위에 명령어를 통해 'config'파일을 만들어야 실행됨
 
 #### 슬레이브 노드 추가 (슬레이브 노드에서만 할 것)
 * 앞서 설치한 대로 쿠버네티스 설치
 * init 명령어 전까지만 수행 (init 명령어 실행하지 마세요)
-
-* 이후 각 노드에서 관리자 권한으로 워커 노드를 참가 시킴 (콘솔에 출력된 메시지를 복붙)
+* 이후 각 노드에서 관리자 권한으로 워커 노드를 참가 시킴 (콘솔에 출력된 메시지를 복붙)
 	```
 	sudo kubeadm join 10.0.2.15:6443 -token xwvbff.5xc67j8qc6ohl2it \
 	   --discovery-token-ca-cert-hash sha256:e19e9263aeb2340a602c2057966b71551e01a5e287d3f23b05073c7b248932e1
@@ -245,6 +244,11 @@ Ex) 오류
 	- echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
 	- kubeadm init(마스터에서 발생시 사용)
 
+Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
+* nftables 백엔드는 현재 kubeadm 패키지와 호환되지 않는다.
+* nftables 백엔드를 사용하면 방화벽 규칙이 중복되어 kube-proxy가 중단된다.
+* 방화벽 확인
+
 #### 마지막으로 연결된 노드들의 상태 확인
 * kubectl get nodes
 	- STATUS 값이 NotReady 상태인 경우, Pod Network 가 아직 deploy 되기 전일 수 있음
@@ -260,6 +264,22 @@ Ex) 오류
 #### 재설치시 유의상황
 * Kubeadm init 또는 join 명령을 실행할 때 중복된 실행으로 문제가 생기는 경우 kubeadm reset명령을 통해서 초기화한다
 
+#### 노드 추가
+* Token 생성(확인)
+```bash
+$ kubeadm token list
+$ kubeadm token create
+```
+
+* Hash 확인
+```bash
+$ openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'
+```
+
+* Join
+```bash
+$ kubeadm join <Kubernetes API Server:PORT> --token <Token 값> --discovery-token-ca-cert-hash sha256:<Hash 값>
+```
 
 ---
 ### 7. GKE를 활용한 쿠버네티스 사용
@@ -463,6 +483,7 @@ docker push gasbugs/http-go
 	- `sudo chmod 666 /var/run/docker.sock`
 	- 미리 관리자 권한 없이 사용할 수 있게 만듦
 	
+
 ![minikube-architecture](./03. 가벼운 환경을 위한 미니큐브 설치/03_00_minikube-architecture.png)[^출처1]
 
 ### Minikube에서 어플리케이션 배포
@@ -566,7 +587,6 @@ get key1
 #### 쿠버네티스 ETCD 데이터베이스 키 구조
 * ETCD 안에 쿠버네티스의 전체 설정 정보를 저장
 ![etcd 키 구조](./04. 쿠버네티스 핵심 개념/02_00_etcd키구조.png)
-
 
 ---
 ### 3. 포드 소개
@@ -779,6 +799,7 @@ Ex) Startup Probe 예제
 
 * 레이블 삭제
 	`$ kubectl label pod http-go-v2 rel-`
+	
 	- 레이블 키 이름에 '-'를 붙임
 
 #### 레이블 확인하기
@@ -817,5 +838,5 @@ Customer-ID| 자원을 할당한 고객 ID| customer-id-29
 ![etcd 키 구조](./04. 쿠버네티스 핵심 개념/)
 
 ---
- [^출처]:  Minikube 설치 및 사용 방법|작성자 일선스
- [^출처1]: https://blog.codonomics.com/2019/02/loadbalancer-support-with-minikube-for-k8s.html
+[^출처]:  Minikube 설치 및 사용 방법|작성자 일선스
+[^출처1]: https://blog.codonomics.com/2019/02/loadbalancer-support-with-minikube-for-k8s.html
