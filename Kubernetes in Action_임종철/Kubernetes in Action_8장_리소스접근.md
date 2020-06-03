@@ -253,8 +253,43 @@ spec:
 	  KUBERNETES_SERVICE_PORT_HTTPS=443
 	  ```
 #### 서버의 신원 검증
+* 자동 생성 시크릿은 각 컨테이너의 /var/run/secrets/kubernetes.io/serviceaccount/에 마운트 됨
+	- 토큰, 네임스페이스, 인증서 정보를 가짐
+```
+root@curl:/# ls /var/run/secrets/kubernetes.io/serviceaccount/
+ca.crt  namespace  token
+```
 
-363
+Ex) 서버의 인증서가 CA에 의해 서명됐는지 확인
+```
+root@curl:/# curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+
+  },
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {
+
+  },
+  "code": 403
+```
+* --cacert 읍션을 사용해 CA 인증서를 지정
+* 클라이언트(curl)는 API 서버를 신뢰하지만 자신이 누구인지 모르기 때문에 API 서버 자쳬에 액세스 권한이 없다고 표시됨
+
+Ex) 서버의 인증서가 CA에 의해 서명됐는지 확인
+```
+root@curl:/# export CURL_CA_BUNDLE=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+```
+* 'CURL_CA_BUNDLE' 환경변수를 설정하면 curl을 실행할 때마다 --cacert를 지정할 필요가 없음
+
+##### API 서버로 인증
+
+364
+
 ---
 #### 8.2.3 앰배서더 컨테이너와 API 서버 통신 간소화
 
