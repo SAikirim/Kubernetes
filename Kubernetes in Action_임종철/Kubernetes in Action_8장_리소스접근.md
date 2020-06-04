@@ -86,7 +86,7 @@ $ curl localhost:8001
 
 ##### kubectl proxy를 통한 쿠버네티스 API 탐험
 Ex) API 서버의 REST 엔트포인트 예저 보기
-```
+```bash
 $ curl http://localhost:8001
 {
   "paths": [
@@ -105,7 +105,7 @@ $ curl http://localhost:8001
 
 ##### 배치 API 그룹의 REST 엔드포인트 탐험
 Ex) /apis/batch 하위에 엔드포인트 나열하기
-```
+```bash
 $ curl http://localhost:8001/apis/batch
 {
   "kind": "APIGroup",
@@ -130,7 +130,7 @@ $ curl http://localhost:8001/apis/batch
 * 사용 가능한 버전 및 클라이언트가 사용해야 하는 기본 버전을 포함해 배치 API 그룹에 대한 설명이 표시됨
 
 Ex) /apis/batch/v1의 리소스 유형
-```
+```bash
 $ curl http://localhost:8001/apis/batch/v1
 {
   "kind": "APIResourceList",		# batch/v1 API 그룹의 API 리소스 예제
@@ -180,7 +180,7 @@ $ curl http://localhost:8001/apis/batch/v1
 ##### 클러스터에 있는 모든 잡 인스턴스 목록
 * 클러스터의 잡 목록을 얻으려면 /apis/batch/vi/jobs 경로에서 GET 요청을 수행
 Ex) 잡 목록
-```
+```bash
 $ curl http://localhost:8001/apis/batch/v1/jobs
 {
   "kind": "JobList",
@@ -198,7 +198,7 @@ $ curl http://localhost:8001/apis/batch/v1/jobs
 * 하나의 특정한 잡을 되돌리려면 URL에 이름과 네임스페이스를 지정해야 함
 
 Ex) 이름으로 특정한 네임스페이스의 리소스 가져오기
-```
+```bash
 $ curl http://localhost:8001/apts/batch/vl/namespaces/default/jobs/my-job
 {
 "kind": "Job".
@@ -230,7 +230,7 @@ $ curl http://localhost:8001/apts/batch/vl/namespaces/default/jobs/my-job
 		+ curl바이너리를 포함하는 컨테이너 이미지 필요(tutum/curl)
 
 Ex) API 서버와 통신을 시도하는 포드(curl.yaml)
-```
+```bash
 apiVersion: v1
 kind: Pod
 metadata:
@@ -255,13 +255,13 @@ spec:
 #### 서버의 신원 검증
 * 자동 생성 시크릿은 각 컨테이너의 /var/run/secrets/kubernetes.io/serviceaccount/에 마운트 됨
 	- 토큰, 네임스페이스, 인증서 정보를 가짐
-```
+```bash
 root@curl:/# ls /var/run/secrets/kubernetes.io/serviceaccount/
 ca.crt  namespace  token
 ```
 
 Ex) 서버의 인증서가 CA에 의해 서명됐는지 확인
-```
+```bash
 root@curl:/# curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes
 {
   "kind": "Status",
@@ -287,17 +287,174 @@ root@curl:/# export CURL_CA_BUNDLE=/var/run/secrets/kubernetes.io/serviceaccount
 * 'CURL_CA_BUNDLE' 환경변수를 설정하면 curl을 실행할 때마다 --cacert를 지정할 필요가 없음
 
 ##### API 서버로 인증
+* 인증을 위해서는 인증 토큰이 필요
+	- 기본 토큰은 시크릿을 통해 제공됨
+	- 토큰 파일은 비밀 볼륨에 저장됨
 
-364
+Ex) 토큰을 환경 변수에 로드
+```bash
+root@curl:/# TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+```
 
+Ex) API 서버로부터 적절한 응답 받기
+```bash
+root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://kubernetes/
+{
+  "paths": [
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+    "/apis/admissionregistration.k8s.io/v1",
+    "/apis/admissionregistration.k8s.io/v1beta1",
+...
+```
+* 요청의 Authorization HTTP 헤더 안에 토큰을 전달
+
+```
+역할 기반 접근 제어（RBAC) 비활성화
+$ kubectl create clusterrolebinding permissive-binding \
+--clusterrole=cluster-admin \
+--group=system:serviceaccounts
+이렇게 하면 모든 서비스 계정(모든 포드라고 말할 수 있음)에 클러스터 관리자 권한이 부여되어 원하는
+ 대로할 수 있다. 명백히 이 작업은 위험성이 있기에 제품의 클러스터에서 절대로 수행해서는 안 된다.
+ 테스트 목적이라면 상관없다，
+```
+* 참고
+	- https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+
+##### 실행 중인 포드의 네임스페이스 가져오기
+* Downward API를 통해 네임스페이스를 포드로 전달할 수 있음
+* 시크릿 볼륨에 네임스페이스라는 파일이 존재
+* 파일의 내용을 NS 환경 변수로 로드한 후, 다음 예제에 표시된 대로 모든 포드를 나열해 보기
+
+Ex) 포드 자신의 네임스페이스에 포드 나열하기
+```bash
+root@curl:/# NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$NS/pods
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0{
+  "kind": "PodList",
+  "apiVersion": "v1",
+  "metadata": {
+    "selfLink": "/api/v1/namespaces/default/pods",
+    "resourceVersion": "188084"
+  },
+...
+```
+* 같은 방식으로 다른 API 객쳬를 검색할 수도 있으며,
+	- 간단한 GET 요청 대신 PUT 또는 PATCH를 보내 업데이트할 수도 있음
+
+##### 포드가 쿠버네티스와 통신하는 방법 자세히 알아보기
+* 어플리케이션이 쿠버네티스 API에 문제없이 액세스할 수 있는 방법
+	- API 서버의 인증서가, ca.crt파일에 있는 certificate 기관에 의해 서명됐는지 여부를 확인 필요
+	- 어플리케이션은 토큰 파일에서 무기명 토큰과 함께 권한 부여 헤더를 보내 자신을 인증해야 함
+	- 네임스페이스 파일은 포드의 네임스페이스 안에 있는 API 객쳬에 대해 CRUD 작업을 수행할 때,
+		+ 네임스페이스를 API 서버로 전달하는 데 사용해야 함
+
+##### CRUD 정의
+* Create, Read, Update, Delete를 뜻함
+	- HTTP 메소드의 각각 POST, GET, PATCH/PUT 및 DELETE에 해당함
+
+![API서버통신](./Kubernetes in Action_8장_리소스접근/10장_01_API서버통신.png)
+	
 ---
 #### 8.2.3 앰배서더 컨테이너와 API 서버 통신 간소화
+* 앰배서더 컨테이너
+	- 포드 내부에서도, API 서버로 직접 보내지 않고 프록시로 보내 인증, 암호화 및 서버 확인을 처리하도록 만듦
+
+##### 앰배서더 컨테이너 패턴 소개
+* API 서버와 직접 통신하는 대신 메인 컨테이너 옆의 앰배서더 컨테이너에서 kubectL 프록시를 실행하고 kubecti 프록시를 통해 API 서버와 통신
+![앰배서더](./Kubernetes in Action_8장_리소스접근/10장_02_앰배서더컨테이너.png)
+* 어플리케이션은 HTTPS 대신 HTTP를 통해 앰버서더에 연결
+* 보안 역할읗 하는 앰버서더 프록시가 API서버에 HTTPS 연결을 처리
+	- 기본 토큰의 시크릿 볼륨에 있는 파일을 사용해 수행
+
+##### 추가적인 앰배서더 컨테이너로 curl 포드 실행하기
+* 다기능의 kubectl-proxy 컨테이너 이미지 만들기
+	- '/Chapter08/kubectl-proxy/' 사용
+	- https://github.com/luksa/kubernetes-in-action
+* 포드의 모든 컨테이너는 동일한 루프백 네트워크 인터페이스를 공유함
+	- 어플리케이션은 locaihost의 포트를 통해 프록시에 액세스 가능
+
+Ex) 앰배서더 컨네이너가 있는 포드(curl-with-ambassador.yaml)
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-with-ambassador
+spec:
+  containers:
+  - name: main
+    image: tutum/curl
+    command: ["sleep", "9999999"]
+  - name: ambassador
+    image: luksa/kubectl-proxy:1.6.2	# kubectl-proxy 이미지를 실행하는 앰배서더 컨테이너
+```
+* 포드에는 2개의 컨테이너가 존재
+* 기본 컨테이너에서 bash를 실행하기 위해선 `-c main`옵션을 사용
+	- 포드의 첫 번째 컨테이너에서 명령을 실행하려면 명시적으로 컨테이너를 지정하지 않아도 됨
+
+
+Ex) 접속
+```bash
+$ kubectl exec -it curl-with-ambassador -c main bash
+root@curl-with-ambassador: /#
+```
+
+##### 앰배서더를 통한 API 서버와의 통신
+Ex) 앰버서더 컨네이너를 통해 API서버 액세스하기
+```bash
+$ root@curl-with-ambassador:/# curl localhost:8001
+{
+  "paths": [
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+    "/apis/admissionregistration.k8s.io/v1"
+```
+* 기본적으로 kubectL 프록시는 포트 8001에 바인딩함
+* 두 컨테이너는 네트워크 인터페이스를 공유
+
+![앰배서더 통신](./Kubernetes in Action_8장_리소스접근/10장_03_앰배서더컨테이너통신.png)
+* curl -> 앰배서더 컨테이너 내 실행되는 프록시 ==> HTTP요청을 함(인증 헤더 없음)
+* 프로시 ==> HTTPS 요청 -> API 서버(토큰을 보내며, 클라이언트 인증을 처리) 
+
 
 ---
 #### 8.2.4 클라이언트 라이브러리를 사용해 API 서버와 통신
+* 간단한 API 요청 이상을 수행하려면 기존 쿠버네티스 API 클라이언트 라이브러리 중 하나를 사용하는 것이 좋음
 
+##### 기존의 클라이언트 라이브러리 사용
+* API Machinery SIG(special interest group)에서 지원하는 두 개의 쿠버네티스 API 클라이언트 라이브러리
+	- 고랭 클라이언트(Golang Client): https://github.com/kubernetes/dient-go
+	- 파이썬(Python): https://github.com/kubernetes-incubator/dient-python
 
+```
+참고 : 쿠버네티스 커뮤니티에는 쿠버네티스 생태계의 특정 부분에 초점을 맞춘 다양한 SIG(special
+interest group) 및 워킹 그룹이 있다. 이 목록은 https://github.com/kubernetes/community/blob/
+master/sig-list.md에서 찾을 수 있다．
+```
 
+* 사용자 제공 클라이언트 라이브러리 목록
+	- Fabric8 자바 클라이언트： https://github.com/fabric8io/kubernetes-client
+	- Amdatu 자바 클라이언트： https://bitbucket.org/amdatulabs/amdatu-kubernetes
+	- Tenxcloud Node.js 클라이언트: https://github.com/tenxcloud/node-kubernetes-client
+	- GoDaddy Node.js 클라이언트: https://github.com/godaddy/kubernetes-client
+	- PHP: https://github.com/devstub/kubernetes-api-php-client
+	- 다른 PHP 클라이언트： https://github.com/maclof/kubernetes-client
+	- Ruby: https://github.com/Ch00k/kubr
+	- 다른 Ruby 클라이언트： https://github.com/abonas/kubeclient
+	- Clojure: https://github.com/yanatan16/clj-kubernetes-api
+	- Scala: https://github.com/doriordan/skuber
+	- Perl: https://metacpan.org/pod/Net::Kubernetes
+	
+	
+	
 ---
 ---
 ### 8.3 요약
