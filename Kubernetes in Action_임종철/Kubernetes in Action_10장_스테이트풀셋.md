@@ -366,32 +366,336 @@ data-kubia-1   Bound    pv-b     1Mi        RWO                           14m
 
 ---
 #### 10.3.3 실제로 포드를 동작해보기
+* 서비스는 헤드리스이기 때문에 서비스를 통해 포드와 통신할 수 없음
 * API 서버를 포드의 프록시로 사용
 
-440
 
 ##### API 서버를 통해 포드와 통신하기
+* API 서버는 개별 포드에 프록시를 직접 연결 가능
+`<apiServerHost>:<port>/api/v1/namespaces/default/pods/kubia-0/proxy/<path>`
+* kubia-0 포드 요청 URL
+
+Ex) 프록시 실행
+```bash
+$ kubectLlproxy
+Starting to serve on 127.0.0.1:8001
+```
+* kubectl 프록시를 사용해 인증 및 SSL 인증서를 거치지 않고도 API 서버와 통신 가능
+
+Ex) 요청 보내기
+```bash
+$ curl localhost:8001/api/v1/namespaces/default/pods/kubia-0/proxy/
+You've hit kubia-0
+Data stored on this pod: No data posted yet
+```
+* 포드 kubia-0에서 실행 중인 어플리케이션의 수신 확인
+
+```
+참고 : 빈 응답을 받으면 URL 끝의 마지막 슬래시 문자를 생략하지 않았는지 확인하라(또는 curl이 -L
+옵션을 사용해 리다이렉션을 하는지 확인하라)
+```
+
+![API서버를 통한 포드 통신](./Kubernetes in Action_10장_스테이트풀셋/10장_07_api서버를통한포드통신.png)
+* 요청은 두 개의 프록시를 통해 이루워졌음
+* 포드에 보낸 요청은 GET 요청이었지만, API서버를 통해 POST요청을 보낼 수도 있음
+
+Ex) kubia-0 포드에 POST 요청 보내기
+```bash
+$ curl -X POST -d "Hey there! This greeting was submitted to kubia-0." localhost:8001/api/v1/namespaces/default/pods/kubia-0/proxy/
+Data stored on pod kubia-0
+```
+* 보낸 데이터는 해당 포드에 저장됨
+
+Ex) kubia-0 포드에 GET 요청 보내, 데이터 확인
+```bash
+$ curl localhost:8001/api/v1/namespaces/default/pods/kubia-0/proxy/
+You've hit kubia-0
+Data stored on this pod: Hey there! This greeting was submitted to kubia-0.
+```
+
+Ex) 다른 클러스터 노드(kubia-1 포드) 확인
+```bash
+$ curl localhost:8001/api/v1/namespaces/default/pods/kubia-1/proxy/
+You've hit kubia-1
+Data stored on this pod: No data posted yet
+```
+
+##### 재스케줄된 포드가 같은 스토리지에 다시 붙었는지 확인하기 위해 스테이트풀 포드 삭제
+Ex) kubia-0포드를 삭제하고 재스케줄 확인
+```
+$ kubectl get pod -w
+NAME      READY   STATUS    RESTARTS   AGE
+kubia-0   1/1     Running   0          10s
+kubia-1   1/1     Running   0          47h
+```
+* 이전 포드의 전쳬 ID(이름, 호스트 이름 및 스토라지)는 새 노드로 효과적으로 이전됨
+
+![스테이트풀 포드 재스케줄](./Kubernetes in Action_10장_스테이트풀셋/10장_08_스테이트풀재스케줄.png)
+
+Ex) kubia-0포드의 상태, ID, 스토리지 확인
+```
+$ curl localhost:8001/apt/v1/namespaces/default/pods/kubta-O/proxy/
+You've hit kubia-0
+Data stored on this pod: Hey there! This greeting was submitted to kubia-0.
+```
+* 포드의 응답에 따르면 호스트 이름과 데이터는 모두 이전과 동일
+* 스테이트풀셋은 항상 삭제된 포드와 정확히 동일한 포드로 효과적으로 바꿈
+<!-- 실제 오류 발생 : Error trying to reach service: 'dial tcp 10.36.0.1:8080: connect: no route to host'# -->
+
+##### 스테이트풀셋 스케일링
+* 스테이트풀셋을 스케일다운하면 포드는 삭제되지만, PersistentVolumeClaim은 변경되지 않은 상태로 유지됨
+	- 스케일다운 및 스케일업은 점진적으로 수행됨
+	- 스케일다운할 대 서수 번호를 가진 가장 높은 포드부터 삭제됨
+
+##### 일반적인 비헤드리스 서비스를 통해 스테이트풀 포드 노출하기
+Ex) 스테이트풀 포드를 액세스하기 위한 일반 서비스(kubia-service-public.yaml)
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubia-public
+spec:
+  selector:
+    app: kubia
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+* 외부에서 노출된 서비스가 아니기 때문에 클러스터 내에서만 액세스할 수 있음
+	- 서비스에 액세스 하려면 포드가 필요하지만, 꼭 그렇지만은 않음
+	
+##### API 서버를 통해 클러스터 내부의 서비스에 연결
+* 피기백(piggyback) 포드를 사용해 클러스터 내부에서 서비스에 액세스하지 않고,
+* API 서버에서 제공하는 것과 동일한 프록시 기능을 사용해
+* 개별 포드에 액세스한 방식으로 서비스에 액세스할 수 있음
+* 서비스에 대한 프록시 요청 URI 경로
+`/api/v1/namespaces/<namespace>/services/<service name>/proxy/<path>`
+
+Ex) kubectl 프록시를 통해 서비스에 액세스(kubectl 프록시는 실행중)
+```bash
+$ curl localhost:8001/api/v1/namespaces/default/services/kubia-public/proxy/
+You've hit kubia-1
+Data stored on this pod: No data posted yet
+```
+* kubia-public 서비스에 대한, 각 요청은 임의의 클러스터 노드에 저장되고, 매번 임의의 노드에서 데이터를 가져옴
 
 
 ---
 ---
 ### 10.4 스테이트풀셋에서 피어 발견
+* 클러스터된 어플리케이션의 중요한 요구 사항은 피어 검색
+	- 피어 검색: 다른 클러스터 구성원을 찾는 기능
+	
+##### SRV 레코드 소개
+* SRV 레코드
+	- 특정 서비스를 제공하는 서버의 호스트 이름 및 포트를 가리키는 데 사용됨
+	- 헤드리스 서비스를 지원하는 포드의 호스트 이름을 가리 키도록 SRV 레코드를 만듦
+	
+* 새 임시 포드에서 dig DNS 도구를 실행해 스테이트풀 포드의 SRV 레코드를 나열
+Ex) svrlookup이라고 하는 일회용 포드 실행
+```bash
+$ kubectl run -it srvlookup --image=tutum/dnsutils --rm \
+--restart=Never -- dig SRV kubia.default.svc.cluster.local
+```
+<!-- p446, 혜드리스 서비스의 아IS SRV 레코드 나열이 안됨 
+	연결이 안되는 노드를 재부팅하니 작동이 됨-->
+	
+Ex) 헤드리스 서비스의 DNS SRV 레코드 나열
+```bash
+...
+;; ANSWER SECTION:
+kubia.default.svc.cluster.local. 9 IN   SRV     0 33 80 kubia-0.kubia.default.svc.cluster.local.
+kubia.default.svc.cluster.local. 9 IN   SRV     0 33 80 kubia-1.kubia.default.svc.cluster.local.
+
+;; ADDITIONAL SECTION:
+kubia-0.kubia.default.svc.cluster.local. 9 IN A 10.44.0.1
+kubia-1.kubia.default.svc.cluster.local. 9 IN A 10.47.0.1
+...
+```
+* 포드가 스테이트풀셋의 모든 포드 목록을 얻기 위해서 SRV DNS 룩업을 수행하면 됨
 
 ---
 #### 10.4.1 DNS를 통한 피어 검색 구현
+* 서비스가 포드의 요청을 무작위로 전달하기 때문에,
+	- 클라이언트는 모든 포드에서 데이터를 가져오려면 모든 포드에 도달할 때까지 많은 요청을 수행해야 함
+	- 노드가 모든 클러스터 노드의 데이터를 응답하도록 함으로써 이를 개선할 수 있음
+
+
+Ex) 샘플 어플리케이션에서 피어 검색하기(kubia-pet-pears-image/app.js)
+```javascript
+const http = require('http');
+const os = require('os');
+const fs = require('fs');
+const dns = require('dns');
+
+const dataFile = "/var/data/kubia.txt";
+const serviceName = "kubia.default.svc.cluster.local";
+const port = 8080;
+
+
+function fileExists(file) {
+  try {
+    fs.statSync(file);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function httpGet(reqOptions, callback) {
+  return http.get(reqOptions, function(response) {
+    var body = '';
+    response.on('data', function(d) { body += d; });
+    response.on('end', function() { callback(body); });
+  }).on('error', function(e) {
+    callback("Error: " + e.message);
+  });
+}
+
+var handler = function(request, response) {
+  if (request.method == 'POST') {
+    var file = fs.createWriteStream(dataFile);
+    file.on('open', function (fd) {
+      request.pipe(file);
+      response.writeHead(200);
+      response.end("Data stored on pod " + os.hostname() + "\n");
+    });
+  } else {
+    response.writeHead(200);
+    if (request.url == '/data') {
+      var data = fileExists(dataFile) ? fs.readFileSync(dataFile, 'utf8') : "No data posted yet";
+      response.end(data);
+    } else {
+      response.write("You've hit " + os.hostname() + "\n");
+      response.write("Data stored in the cluster:\n");
+      dns.resolveSrv(serviceName, function (err, addresses) {			# 앱은 SRV 레코드를 얻기 위해 DNS 룩업을 수행함
+        if (err) {
+          response.end("Could not look up DNS SRV records: " + err);
+          return;
+        }
+        var numResponses = 0;
+        if (addresses.length == 0) {
+          response.end("No peers discovered.");
+        } else {
+          addresses.forEach(function (item) {							# SRV 레코드가 가리키는 각 포드는 데이터를 획득하기 위해 접촉됨
+            var requestOptions = {										#
+              host: item.name,											#
+              port: port,												#
+              path: '/data'												#		
+            };															#
+            httpGet(requestOptions, function (returnedData) {			# SRV 레코드가 가리키는 각 포드는 데이터를 획득하기 위해 접촉됨
+              numResponses++;
+              response.write("- " + item.name + ": " + returnedData + "\n");
+              if (numResponses == addresses.length) {
+                response.end();
+              }
+            });
+          });
+        }
+      });
+    }
+  }
+};
+
+var www = http.createServer(handler);
+www.listen(port);
+```
+
+![분산 데이터 스토리지 동작](./Kubernetes in Action_10장_스테이트풀셋/10장_09_분산데이터스토리지동작.png)
+1. 첫 요청을 받은 서버는 헤드리스 kubia 서비스로 SRV 레코드를 조회함
+2. 다음 서비스를 지원하는 각 포드에게 GET 요청을 전송함
+3. 각 노드에 저장된 데이터와 함께 모든 노드의 목록을 반환함
 
 ---
 #### 10.4.2 스테이트풀셋 업데이트
+* 포드가 새 이미지를 사용하도록 포드 템플릿 업데이트
+	- 스테이트풀셋은 실행 중
+	- 복제본 수를 3으로 설정
+`$ kubectl edit statefulset kubia'
+* spec.replicas를 3으로 변경
+* spec.template.spec.containers.image 속성을 새이미지로 변경
+	- luksa/kubiapet --> luksa/kubia-pet-peers
+
+Ex) 포드 변경 확인
+```bash
+$ kubectl get pod
+NAME      READY   STATUS    RESTARTS   AGE
+kubia-0   1/1     Running   0          47s
+kubia-1   1/1     Running   0          94s
+kubia-2   1/1     Running   0          2m12s
+```
+* 기존의 포드를 재실행되야 업데이트 됨
+	- 기존 포드 삭제 필요
 
 ---
 #### 10.4.3 클러스터된 데이터 스토리지 사용
+Ex) 서비스를 통해 클러스려된 데이터 스토리지에 데이터 쓰기
+```bash
+$ curl -X POST -d "The sun is shining" localhost:8001/api/v1/namespaces/default/services/kubia-public/proxy/
+Data stored on pod kubia-2
+$ curl -X POST -d "The sun is shining" localhost:8001/api/v1/namespaces/default/services/kubia-public/proxy/
+Data stored on pod kubia-1
+```
+
+Ex) 데이터 스토리지에서 데이터 읽기
+```bash
+$ curl localhost:8001/api/v1/namespaces/default/services/kubia-public/proxy/
+You've hit kubia-1
+Data stored in the cluster:
+- kubia-1.kubia.default.svc.cluster.local: The sun is shining
+- kubia-0.kubia.default.svc.cluster.local: No data posted yet
+- kubia-2.kubia.default.svc.cluster.local: The sun is shining
+```
+* 클라이언트 요청이 클러스터 노드 중 하나에 도달하면
+	- 모든 피어를 검색 -> 해당 피어에서 데이터를 수집 -> 모든 데이터를 다시 클라이언트로 보냄
+
 
 ---
 ---
 ### 10.5 스테이트풀셋이 노드 장애를 처리하는 방법
-
+* 노드가 값자기 실패하면 쿠버네티스는 노드 또는 해당 포드의 상태를 알 수 없음
+* 스테이트풀셋은 포드를 더 이상 실행하지 않는다는 것을 확신할 때까지 대쳬 포드를 생성할 수 없으며 생성해서도 안 됨
+	- 오직 클러스터 관리자가 알려줘야함 알 수 있음
+* 노드 중 하나가 네트워크에서 연결이 끊어졌을 때 
+	- 스테이트풀셋과 포드의 변화 확인
+	
+	
 ---
 #### 10.5.1 네트워크에서 노드 연결 해제 시뮬레이션
+* 노드의 eth0 네트워크 인터페이스를 셧다운하여 네트워크 연결의 해제를 시뮬레이트 함
+
+##### 노드의 네트워크 어댑터 셧다운
+Ex) GKE의 경우
+```bash
+$ gcl..oud compute ssh gke-kubta-default-poo1--32a2cac8-mOgl
+$ sudo tfconftg ethO down
+```
+* 노드 중 하나에 ssh 접속해 인터페이스 셧다운
+	- 온프레미스 환경으로 ens33 셧다운도 가능
+
+##### 쿠버네티스 마스터에 의해 관찰된 노드의 상태 확인
+Ex) 실패한 노드의 상태가 NotReady로 바뀜
+```bass
+kubectl get node
+NAME         STATUS     ROLES    AGE    VERSION
+localhost0   Ready      <none>   3d3h   v1.18.3
+localhost1   NotReady   <none>   3d3h   v1.18.3
+localhost2   Ready      <none>   3d3h   v1.18.3
+ubuntu       Ready      master   3d4h   v1.18.2
+```
+
+Ex) 노드가 NotReady가 된 이후의 포드 상태 변경을 관찰
+```bass
+kubectl get node
+NAME         STATUS     ROLES    AGE    VERSION
+localhost0   Ready      <none>   3d3h   v1.18.3
+localhost1   NotReady   <none>   3d3h   v1.18.3
+localhost2   Ready      <none>   3d3h   v1.18.3
+ubuntu       Ready      master   3d4h   v1.18.2
+```
+
+##### 상태를 알 수 없는 포드에 발생한 상황
+
 
 ---
 #### 10.5.2 수동으로 포드 삭제

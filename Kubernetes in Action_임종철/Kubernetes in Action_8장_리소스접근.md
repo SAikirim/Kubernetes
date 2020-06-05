@@ -32,7 +32,7 @@
 #### 10.2.1 쿠버네티스 REST API 탐색
 * kubectl cluster-info를 실행해 API서버 URL을 얻을 수 있음
 ```bash
-$ kubectl cluster-tnfo
+$ kubectl cluster-info
 Kubernetes master is running at https://192.168.10.200:6443
 KubeDNS is running at https://192.168.10.200:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
