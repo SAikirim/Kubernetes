@@ -166,10 +166,16 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 	- 클러스터를 부트스트랩하는 명령
 	- 인증성 관리, 마스터 노드를 만들 수 있도록 초기화 함, 쿠버네티스 설치
 * kubelet
+	- 클러스터의 각 노드에서 실행되는 에이전트
+	- Kubelet은 포드에서 컨테이너가 확실하게 동작하도록 관리함
 	- 클러스터의 모든 시스템에서 실행되는 구성 요소로 창 및 컨테이너 시작과 같은 작업을 수행
+	- 쿠버네티스를 통해 생성되지 않는 컨테이너는 관리하지 않음
 * kubectl
-	- 커맨드 라인 util 은 당신의 클러스터와 대화
+	- 커맨드 라인 util은 당신의 클러스터와 대화
 	- 클라이언트 프로그램
+
+###### 부트스크랩
+* 일반적으로 한 번 시작되면 알아서 진행되는 일련의 과정을 의미
 
 #### 쿠버네티스 우분투에 설치
 * 다음 내용을 install.sh 파일에 작성하고 chmod로 권한을 주고 실행
@@ -191,14 +197,34 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 	apt-mark hold kubelet kubeadm kubectl
 	```
 
+#### 쿠버네티스 centOS에 설치
+* 쿠버네티스 설치 사이트 아래 스크립트 내용이 있음	
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+
+```bash
+# Set SELinux in permissive mode (effectively disabling it)
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+```
+* setenforce 0: 일시적으로 비활성화 / 1을 사용하면 활성화
+	- 영구 적용을 원하면 '/etc/selinux/config' 파일 수정
+* Permissive mode
+	- rule 에 어긋나는 동작이 있을 경우 audit log 를 남기고 해당 operation은 허용
+	- audit log : 리눅스 감사 시스템 데몬 로그
+		+ 설정된 감사 룰에 따라 시스템 정보 기록
+
+
 #### Master 노드 초기화(마스터 노드에서만 할 것)
 * Master노드를 초기화를 가장 먼저 수행 (사용할 포드 네트워크 대역을 설정)
 	- `sudo kubeadm init`
 	- 오류/타임아웃 발생시 '신뢰할 수 있는 APT 키를 추가' 실시 
 * 스왑 에러 발생 시 스왑 기능 제거
+	- `free -m` : 스왑 파티션 확인
+	- `swapon -s` : 스왑 파일 확인
 	- `sudo swapoff -a` : 현재 커널에서 스왑 기능 끄기
 	- `sudo sed -i '/swap / s/^\(.*\)$/#\1/g' /etc/fstab` : 리붓 후에도 스왑 기능 유지
 	- __워커노드에서도 스왑 기능 제거 필요!!!__
+	- 'kubelet'은 스왑이 있으면 작동안함
 
 * Kubernetes에서 스왑을 비활성화하는 이유
 	- Kubernetes 1.8 이후, 노드에서 스왑을 비활성화해야 함 (또는 fail swap on을 false 로 설정)
@@ -218,11 +244,15 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 	sudo chown $(id -u):$(id -g) $HOME/.kube/config
 	```
 
-* Pod Network 추가
+* Pod Network 추가 (Installing a Pod network add-on)
 	`kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
-	
+	- Weave Net이라는 포드 네트워크 플러그인 설치
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
 	- root로 위에 명령어를 통해 'config'파일을 만들어야 실행됨
+* 컨테이너 네트워크 인터페이스(CNI) 기반 Pod 네트워크 애드온으로 Pod가 서로 통신할 수 있음
+	- 네트워크를 설치하기 전에 클러스터 DNS(CoreDNS)가 시작되지 않음
+###### 참고 : https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/
+
 
 #### 슬레이브 노드 추가 (슬레이브 노드에서만 할 것)
 * 앞서 설치한 대로 쿠버네티스 설치
@@ -232,6 +262,7 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 	sudo kubeadm join 10.0.2.15:6443 -token xwvbff.5xc67j8qc6ohl2it \
 	   --discovery-token-ca-cert-hash sha256:e19e9263aeb2340a602c2057966b71551e01a5e287d3f23b05073c7b248932e1
 	```
+* --discovery-token-ca-cert-hash : root CA 공개키
 
 #### Error 발생시
 [참고] https://xoit.tistory.com/94
@@ -261,6 +292,17 @@ Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
 ##### 우리가 설정한 환경에서 마스터 노드와 슬레이브 노드 연결 관계
 ![설정한 상황](./02.쿠버네티스 들어가기/2. 클러스터 설치 브리핑_01.png)
 
+#### 간단한 어플리케이션 실행 및 확인
+```bash
+$ kubectl create deploy nginx --image=nginx
+$ kubectl get pod
+$ kubectl port-forward nginx-5f5678c9d8-kfbnk 8080:80
+$ kubectl delete deploy ngins
+```
+* 노드 쪽에 방화벽이 열려있는지 확인
+	- `sudo firewall-cmd --zone=public --add-port=10250/tcp --permanent`
+
+
 #### 재설치시 유의상황
 * Kubeadm init 또는 join 명령을 실행할 때 중복된 실행으로 문제가 생기는 경우 kubeadm reset명령을 통해서 초기화한다
 
@@ -280,6 +322,14 @@ $ openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outf
 ```bash
 $ kubeadm join <Kubernetes API Server:PORT> --token <Token 값> --discovery-token-ca-cert-hash sha256:<Hash 값>
 ```
+###### 참고 : https://sarc.io/index.php/cloud/1383-join-token
+
+---
+#### 실습
+* 가상머신을 하나만 놔두고 모든 노드를 삭제
+* 모든 상태를 쿠버네티스를 설치한 뒤의 스냅샷으로 되돌림
+* Master, Worker1, Worker2 의 가상머신을 각각 복제하여 생성하고 쿠버네티스를 설치하여 클러스터를 구성
+* Kubeadm init 또는 join 명령을 실행할 때 중복된 실행으로 문제가 생기는 경우 kubeadm reset명령을 통해서 초기화
 
 ---
 ### 7. GKE를 활용한 쿠버네티스 사용

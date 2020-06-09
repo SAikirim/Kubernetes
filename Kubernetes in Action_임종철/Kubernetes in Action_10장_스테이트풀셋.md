@@ -667,16 +667,16 @@ Data stored in the cluster:
 ##### 노드의 네트워크 어댑터 셧다운
 Ex) GKE의 경우
 ```bash
-$ gcl..oud compute ssh gke-kubta-default-poo1--32a2cac8-mOgl
-$ sudo tfconftg ethO down
+$ gcloud compute ssh gke-kubta-default-poo1--32a2cac8-mOgl
+$ sudo ifconfig eth0 down
 ```
 * 노드 중 하나에 ssh 접속해 인터페이스 셧다운
 	- 온프레미스 환경으로 ens33 셧다운도 가능
 
 ##### 쿠버네티스 마스터에 의해 관찰된 노드의 상태 확인
 Ex) 실패한 노드의 상태가 NotReady로 바뀜
-```bass
-kubectl get node
+```bash
+$ kubectl get node
 NAME         STATUS     ROLES    AGE    VERSION
 localhost0   Ready      <none>   3d3h   v1.18.3
 localhost1   NotReady   <none>   3d3h   v1.18.3
@@ -685,24 +685,97 @@ ubuntu       Ready      master   3d4h   v1.18.2
 ```
 
 Ex) 노드가 NotReady가 된 이후의 포드 상태 변경을 관찰
-```bass
-kubectl get node
-NAME         STATUS     ROLES    AGE    VERSION
-localhost0   Ready      <none>   3d3h   v1.18.3
-localhost1   NotReady   <none>   3d3h   v1.18.3
-localhost2   Ready      <none>   3d3h   v1.18.3
-ubuntu       Ready      master   3d4h   v1.18.2
+```bash
+kubectl get pod
+NAME      READY   STATUS        RESTARTS   AGE
+kubia-0   1/1     Running       1          2d17h
+kubia-1   1/1     Running       1          2d17h
+kubia-2   1/1     Terminating   0          13m
 ```
+* 노드의 연결이 끊기 kubia-2는 Unknown 또는 Terminateing 상태가 됨
 
 ##### 상태를 알 수 없는 포드에 발생한 상황
+* 노드가 다시 온라인 상태가 되면, 해당 포드는 실행됨(Running)으로 표시 됨
+* 끊기 상태가 계속 유지되면 포드는 노드에서 자동으로 제거됨
+
+Ex) 노드가 끊긴 kubia-2 포드에 대한 세부 정보 표시
+```bash
+$ kubectl describe pod kubia-2
+Name:                      kubia-2
+Namespace:                 default
+Priority:                  0
+Node:                      localhost1/192.168.10.156
+...
+Status:                    Terminating (lasts 10m)
+Termination Grace Period:  30s
+...
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             False
+  ContainersReady   True
+  PodScheduled      True
+...
+```
+* Status는 Terminating, Ready는 False 상태임
+* 실제 포드 컨테이너는 여전히 완벽하게 작동중
 
 
 ---
 #### 10.5.2 수동으로 포드 삭제
 
+##### 일반적인 방법으로 포드 지우기
+Ex) kubia-2 포드 삭제
+```bash
+$ kubectl delete pod kubia-2
+pod "kubia-2" deleted
+```
+
+Ex) 삭제되지 않은 kubia-2 포드
+```bash
+$ kubrctl get pod
+NAME      READY   STATUS        RESTARTS   AGE
+kubia-0   1/1     Running       1          2d17h
+kubia-1   1/1     Running       1          2d17h
+kubia-2   1/1     Terminating   0          28m
+```
+
+##### 포드가 삭제되지 않은 이유
+* 포드는 삭제하기 전에 삭제 표시가 되어 있음
+	- 컨트롤 플레인 자쳬가 이미 것을 삭제했기 때문임
+
+##### 포드의 강제 삭제
+* Kubelet이 포드가 더 이상 실행되지 않고 있음을 확인하기까지 기다리지 않고 API 서버가 포드를 삭제
+Ex) 삭제되지 않은 kubia-2 포드
+```bash
+$ kubectl delete po kubia-2 --force --grace-period 0
+warning: Immediate deletion does not wait for confirmation that the running resource has been terminated. The resource may continue to run on the cluster indefinitely.
+pod "kubia-2" force deleted
+```
+* --force와 -grace-period 0 읍션을 모두 사용해야 함
+*  kubectl이 표시한 경고는 여러분이 하고 있는 작업을 알려주는 것
+
+Ex) 포드 확인
+```
+$ kubectl get pod
+NAME      READY   STATUS    RESTARTS   AGE
+kubia-0   1/1     Running   1          2d17h
+kubia-1   1/1     Running   1          2d17h
+kubia-2   1/1     Running   0          19s
+```
+
+
 ---
 ---
 ### 10.6 요약
+* 복제된 포드에 개별 스토리지 제공하기
+* 포드에 안정적인 ID 제공하기
+* 스테이트풀셋과 해당하는 헤드리스 통제 서비스를 생성하기
+* 스테이트풀셋을 스케일업하고 업데이트하기
+* DNS를 통해 스테이트풀셋의 구성원 찾기
+* 호스트 이름을 통해 구성원과 연결하기
+* 스테이트풀 포드를 강제로 삭제하기
+
 
 ---
 ## 출처
