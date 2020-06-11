@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: http-go
+spec:
+  containers:
+    - name: http-go
+      image: gasbugs/http-go
+      ports:
+        - containerPort: 8080
+    # 여기가 파드 템플릿의 끝이다.

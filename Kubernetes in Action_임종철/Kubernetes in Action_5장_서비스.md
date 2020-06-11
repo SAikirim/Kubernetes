@@ -10,7 +10,7 @@
 #### 5.1.1 서비스 생성
 
 ##### kubecti expose를 통한 서비스 생성
-Ex) kubia-svc.yanil
+Ex) kubia-svc.yaml
 ```bash
 kubectl expose deployment hello-world --type=LoadBalancer --name=my-service
 ```
@@ -166,7 +166,7 @@ options ndots:5
 ```
 클라이언트 -> 서비스 -> 포드				(X)
 클라이언트 -> 서비스 -> 엔드포인트 -> 포드	(O)
-```	
+```
 * 셀렉터는 IP와 포트의 목록을 만드는 데 사용되고 엔드포인트 리소스에 저장됨
 
 Ex) 엔드포인트 확인
@@ -236,13 +236,13 @@ spec:
 ###### 참고
 * CNAME 레코드는 숫자 형식의 IP 주소 대신에 FQDN(fully qualified domain name）을 지칭함
 
-
 ---
 ### 5.3 외부 서비스에서 외부 클라이언트로
 * 서비스가 외부에서 액세스 가능한 방법
 	- NodePort 서비스 탸입으로 설정하기
-		+ NodePort 서비스의 각 클러스터 노드는 노드 자체의 이름을 통해 포트를 열고 포트에서 발생한 트래픽을 서비스로 리다이렉트 함
-	
+		
+	+ NodePort 서비스의 각 클러스터 노드는 노드 자체의 이름을 통해 포트를 열고 포트에서 발생한 트래픽을 서비스로 리다이렉트 함
+		
 	- LoadBalancer 서비스 타입으로 설정하기（NodePort 타입의 확장형）
 		+ 쿠버네티스가 실행 중인 클라우드 인프라스트럭처에 프로비전(provision)된 지정된 LoadBalancer를 통해 서비스 액세스가능하게 됨
 		+ LoadBalancer는 발생한 트래픽을 모든 노드에서 노드포트로 리다이렉트 함
@@ -416,7 +416,7 @@ $ curl --resolve kubia.example.com:80:x.x.x.x http://kubia.example.com
 1. 클라이언트는 처음으로 kubia.eample.com에 대해서 DNS 룩업을 실행
 2. DNS서버(또는 현재 OS)는 인그레스 컨트롤러의 IP를 반환
 3. 클라이언트는 HTTP 요청을 인그레스 컨트롤러로 보냄(Host 헤더에 kubia.example.com을 지정)
-4. 헤더에서 컨트롤러는 클라이언트가 액섹스하려고 하는 서비스를 결정
+4. 헤더에서 컨트롤러는 클라이언트가 액세스하려고 하는 서비스를 결정
 5. 요청을 포드 중 하나로 전달
 * 인그레스 컨트롤러는 요청을 서비스로 전달하지 않음
 
@@ -486,7 +486,7 @@ Ex) 개인 키와 인증서 생성
 $ openssl genrsa -out tls.key 2048
 $ openssl req -new -x509 -key tls.key -out tls.cert -days 360 -subj
 /CN=kubta.example.com
-```	
+```
 
 Ex) 시크릿 생성
 ```bash
@@ -500,7 +500,7 @@ CertificateSigningRequest 리소스를 통한 인증서 서명
 할 수 있다, 사용자나 애플리케이션은 정규 인증서 요청을 생성할 수 있고 CSR에 넣어서 운영자나 자동화 
 프로세스가 다음과 같이 요청을 승인할 수 있다，
 
-$ kubecti. certtftcate approve <name of the CSR>
+$ kubectl certiftcate approve <name of the CSR>
 
 서명된 인증서는 CSR의 status.certificate 필드에서 추출할 수 있다．
 인증서 서명 컴포넌트는 클러스터에서 반드시 실행돼야 함을 기억햐라. 그렇지 않으면
@@ -630,7 +630,7 @@ $ kubectl exec kubia-cqp6n -- touch /var/ready
 ```
 * 파일을 생성하면, 포드의 레디네스 프로브 명령이 상테 코드 0으로 종료되야 함
  - 즉, 프로브가 성공하고 포드가 준비 상태로 표시돼야 함
- 
+
 
 Ex) check2
 ```bash
@@ -775,7 +775,6 @@ Address: 10.44.0.1
 |
 [포드] 
 ```
-
 
 ---
 ## 출처

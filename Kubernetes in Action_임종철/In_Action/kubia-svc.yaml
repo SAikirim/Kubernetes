@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubia
+
+spec:
+  ports:
+    - port: 80 			# 서비스가 사용할 포트
+      targetPort: 8080	# 서비스가 포워드할 컨테이너 포트
+  selector:				# 라벨이 app=kubia인 모든 포드는 이 서비스에 속한다.
+    app: kubia

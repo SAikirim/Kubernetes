@@ -498,6 +498,21 @@ https://kubernetes.io/docs/concepts/cluster-administration/addons
 ###### Service 네트워크 통신 참고
 https://coffeewhale.com/k8s/network/2019/05/11/k8s-network-02/
 
+
+##### NodePort
+* 쿠버네티스가 NodePort 타입의 서비스를 생성하면
+	- __kube-proxy가 각 노드의 eth0 네트워크 interface에 30000–32767 포트 사이의 임의의 포트를 할당__
+	- 할당된 포트로 요청이 오게 되면 이것을 매핑된 ClusterIP로 전달
+		+ 실제로 따져보자면 ClusterIP로 전달하는 것이 아니라 ClusterIP를 통해 포워딩되는 netfilter 체인 룰로 NAT가 적용
+
+##### Ingress
+* 한개의 로드 밸런서를 이용하여 여러 서비스에 연결을 하는 것이 불가능 -> Ingress 서비스 타입이 등장
+* Ingress란 리버스 프록시를 통해 클러스터 내부 Service로 어떻게 패킷을 포워딩 시킬 것인지 명시한 쿠버네티스 리소스
+	- Ingress는 Ingress Controller와 짝지어짐
+* Ingress Controller는 다양하게 있음
+	- 대중적으로 많이 사용하는 Ingress Controller는 nginx-ingress
+* nginx ingress controller는 ingress 리소스를 읽어서 그에 맞는 리버스 프록시를 구성
+
 ---
 ---
 ### 11.6 고가용성 클러스터 실행
