@@ -366,7 +366,7 @@ root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/na
 	- 포드 내부에서도, API 서버로 직접 보내지 않고 프록시로 보내 인증, 암호화 및 서버 확인을 처리하도록 만듦
 
 ##### 앰배서더 컨테이너 패턴 소개
-* API 서버와 직접 통신하는 대신 메인 컨테이너 옆의 앰배서더 컨테이너에서 kubectL 프록시를 실행하고 kubecti 프록시를 통해 API 서버와 통신
+* API 서버와 직접 통신하는 대신 메인 컨테이너 옆의 앰배서더 컨테이너에서 kubectl 프록시를 실행하고 kubectl 프록시를 통해 API 서버와 통신
 ![앰배서더](./Kubernetes in Action_8장_리소스접근/10장_02_앰배서더컨테이너.png)
 * 어플리케이션은 HTTPS 대신 HTTP를 통해 앰버서더에 연결
 * 보안 역할읗 하는 앰버서더 프록시가 API서버에 HTTPS 연결을 처리
@@ -417,12 +417,12 @@ $ root@curl-with-ambassador:/# curl localhost:8001
     "/apis/admissionregistration.k8s.io",
     "/apis/admissionregistration.k8s.io/v1"
 ```
-* 기본적으로 kubectL 프록시는 포트 8001에 바인딩함
+* 기본적으로 kubectl 프록시는 포트 8001에 바인딩함
 * 두 컨테이너는 네트워크 인터페이스를 공유
 
 ![앰배서더 통신](./Kubernetes in Action_8장_리소스접근/10장_03_앰배서더컨테이너통신.png)
 * curl -> 앰배서더 컨테이너 내 실행되는 프록시 ==> HTTP요청을 함(인증 헤더 없음)
-* 프로시 ==> HTTPS 요청 -> API 서버(토큰을 보내며, 클라이언트 인증을 처리) 
+* 프록시 ==> HTTPS 요청 -> API 서버(토큰을 보내며, 클라이언트 인증을 처리) 
 
 
 ---

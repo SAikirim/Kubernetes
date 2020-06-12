@@ -130,13 +130,97 @@ token:      eyJhbGciOiJSUzI1NiIsImtpZ...
 ##### 서비스어카운트의 이미지가 시크릿을 가져오는 방식
 * image pull Secrets
 	- 개인용 이미지 스토리지에서 컨테이너 이미지를 가져오는 데 필요한 자격 증명을 가지고 있는 시크릿
+Ex)image pull Secret이 포함된 서비스어카운트
+```bash
+$ cat sa-image-pull-secrets.yaml                                                20-06-12 - 11:33:10
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-service-account
+imagePullSecrets:
+- name: my-dockerhub-secret
+```
+* 서비스어카운트의 이미지 풀 Secrets는 마운트 가능한 시크릿과 약간 다르게 동작함
+	- __서비스어카운트를 사용해 모든 포드에 자동으로 추가될 수 있는지를 결정__
+	- 서비스어카운트에 이미지 풀 Secrets를 추가하면 각 포드에 개별적으로 추가할 필요가 없음
 
-518
+---
+#### 12.1.4 포드에 서비스어카운트 할당
+* 추가 서비스어카운트를 생성한 후에는 이를 포드에 지정해야 함
+	- 포드 정의의 spec.serviceAccountName 필드에 서비스어카운트의 이름을 설정
+```
+참고 : 서비스어카운트는 포드가 생성될 때 반드시 지정돼야 한다. 그 이후에는 변경할 수 없다．
+```
+
+##### 사용자 지정 서비스어카운트를 사용하는 포드 생성
+Ex) 사용자 지정 서비스어카운트를 사용한 포드(curl-custom-sa.yaml)
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-custom-sa
+spec:
+  serviceAccountName: foo	# 이 포드는 default 대신에 foo 서비스어카운트를 사용함
+  containers:
+  - name: main
+    image: tutum/curl
+    command: ["sleep", "9999999"]
+  - name: ambassador
+    image: luksa/kubectl-proxy:1.6.2
+```
+* 앰베서더 컨테이너는 포드의 서비스어카운트의 토큰을 사용해 API 서버로 인증하기 위해 kubectl proxy 프로세스를 실행함
+
+Ex) 포드의 컨테이너에 마운트된 토큰 확인하기
+```bash
+kubectl exec -it curl-custom-sa -c main -- \
+  cat /var/run/secrets/kubernetes.io/serviceaccount/token
+eyJhbGciOiJSUzI1NiIsImtpZCI6IjBFeVNkN2x...
+```
+
+##### API 서버와 통신하기 위해 서비스어카운트의 사용자 토큰 사용
+* 앰배서더 컨테이너는 서버와 통신할 때 토큰을 사용
+	- localhost:8001을 사용하는 앰베서더 컨테이너를 통해 토큰을 테스트 가능
+	
+Ex) 사용자 지정 서비스어카운트가 포함된 API 서버와 통신하기
+```bash
+$ kubectl exec -it curl-custom-sa -c main -- curl localhost:8001/api/v1/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+  "metadata": {
+    "selfLink": "/api/v1/pods",
+    "resourceVersion": "307842"
+  },
+  "items": [
+    {
+      "metadata": {
+...
+```
+* 서버에서 적절한 응답을 받았으므로 사용자 지정 서비스어카운트가 포드를 나열할 수 있음
+	- 클러스터 RBAC 인증 플러그인을 사용하지 않거나
+	- 모든 서비스어카운트에 전체 권한을 부여했기 때문에 응답을 받음
+* 위의 경우 서비스어카운트를 사용하는 유일한 이유
+	- 마운트 가능한 시크릿을 적용하거나 서비스어카운트를 통해 이미지 풀 시크릿을 제공하는 것임
+* 그러나 RBAC 인증 플러그인을 사용할 때는 추가 서비스어카운트를 만들어야 함
 
 ---
 ---
 ### 12.2 롤 기반 접근 제어 클러스터 보안
+* 쿠버네티스 1.8.0 버전에서 RBAC 승인 플러그인은 GA(Generat Availability)로 승격히여 클러스터에서 기본적으로 활성화됨
+	- 디폴트 서비스어카운트는 클러스터 상태를 볼 수 없으며 추가 권한을 부여히지 않는 한 어떤 식으로든 클러스터를 수정할 수 있음
+```
+참고 : RBAC 외에도 쿠버네티스에는 ABAC(Attribute-based Access Contr히）플 러그인, 웹훅 플러그인, 
+사용자 정의 플러그인 구현 같은 그 밖의 인증 플러그인이 포함돼 있다. 하지만 RBAC이 표준이다．
+```
 
+---
+#### 12.2.1 RBAC 인증 플러그인 소개
+* 쿠버네티스 API 서버를 설정하여 사용자가 요청한 작업이 수행할 수 있는지 승인 플러그인을 사용하여 확인 가능
+	- API 서버는 REST 인터페이스를 노출하므로 사용자는 HTTP 요청을 서버로 전송해 작업을 수행
+	- 사용자는 요청에 자격증명(인증 토큰, 사용자 이름 및 암호 또는 클라이언트 인증서)을 포함해 인증함
+
+##### 액션
+![HTTP 메소드 매핑](./Kubernetes in Action_12장_API서버보안/12장_01_HTTP메소드매핑하기.png)
 
 ---
 ---

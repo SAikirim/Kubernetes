@@ -171,23 +171,175 @@ data:
 * fortune-https 시크릿을 사용히려면, Nginx가 이를 사용하도록 설정해야 함
 
 ##### HTTPS를 적용하기 위해 fortune-config ConfigMap 수정
-Ex) stringData 필드를 사용해 Secret에 일반 데스트 항목 추가
+* `kubectl edtt conftgmap fortune-conftg` 사용
+Ex) fortune-config ConfigMap의 데이터를 수정하기
 ```
-kind : Secret
-apiVersion: v1
-stringData: 		# stringData는 비바이너리 형태의 시크릿 데이터일 때 사용
-  foo: plain text	# plain text는 Base64 인코딩된 형태가 아님
+...
 data:
-  https.cert: LS@tLS1CRUdJTiBDRVJUSUZJQOFURS@tLS@tCk1JSURCekNDQ...
-  https.key: LS@tLS1CRUdJTiBSU@EgUFJJVkFURSBLRVktLS@tLQpNSU1FcE...
+  my-nginx-config.conf: |
+    server {
+      listen              80;
+	  listen              443 ssl;
+      server_name         www.kubia-example.com;
+    ssl_certificate       certs/https.cert;			# 경로는 /etc/nginx에 상대적임 
+      ssl_certifiate_key  certs/https.key;			#
+      ssl_protocols       TLSv1 TLSv1.1 TLSv1.2;
+      ssl_ciphers         HIGH:!aNULL:!MD5;
+      location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        }
+     }
+  sleep-interval: |
+...
+```
+* 이렇게 하면 /etc/nginx/certs에서 인증서와 키 파일을 읽도록 서버가 설정되므로 secret 볼륨을 마운트해야 함
+
+##### 포드에서 fortune-https 시크릿 마운트하기
+* 새로운 fortune-https 포드를 생성하고 인증서 및 키를 보유한 secret 볼륨을 웹 서버 컨테이너의 적절한 위치에 마운트
+Ex) fortune-https YAML 정의(fortune-pod-https.yaml)
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune-https
+spec:
+  containers:
+  - image: luksa/fortune:env
+    name: html-generator
+    env:
+    - name: INTERVAL
+      valueFrom:
+        configMapKeyRef:
+          name: fortune-config
+          key: sleep-interval
+    volumeMounts:
+    - name: html
+      mountPath: /var/htdocs
+  - image: nginx:alpine
+    name: web-server
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html
+      readOnly: true
+    - name: config
+      mountPath: /etc/nginx/conf.d
+      readOnly: true
+    - name: certs						# /etc/nginx/certs에서 인증서와 키 파일을 읽도록 nginx를 설정했으므로 secret 볼륨을 마운트해야 함
+      mountPath: /etc/nginx/certs/		#
+      readOnly: true					#
+    ports:
+    - containerPort: 80
+    - containerPort: 443
+  volumes:
+  - name: html
+    emptyDir: {}
+  - name: config
+    configMap:
+      name: fortune-config
+      items:
+      - key: my-nginx-config.conf
+        path: https.conf
+  - name: certs							# 여기서 fortune-https 시크릿을 참조해 secret 볼륨을 정의함
+    secret:								#
+      secretName: fortune-https			#
+```
+
+![fotune-https](./Kubernetes in Action_7장_ConfigMap과시크릿/7장_01_fotune-https.png)
+* YAML에 속하지 않지만 자동으로 포드에 추가되는 default-token 시크릿, 볼륨, 볼륨 마운트는 생략
+```
+참고 : configMap 볼륨과 마찬가지로, secret 볼륨은 defaultMode 속성을 통해 볼륨에 노출된 파일에
+대한 권한을 지정하는 기능도 지원한다．
+```
+
+##### nginx가 시크릿에서 cert와 key 사용 여부 테스트
+* 포드의 포트 443에 대한 포트 포워드 터널을 열고 이를 통해 curl을 사용해 서버에 요청을 보내 포드가 HTTPS 트래픽을 제공하는지 확인
+```
+$ kubectl port-forward fortune-https 8443:443&
+
+$ curl https://localhost:8443 -k
+```
+
+##### 메모리에 저장된 secret 볼륨
+* secret 볼륨은 시크릿 파일을 위하여 인메모리 파일 시스템(tmpfs)을 사용함
+Ex) 마운트 확인
+```
+# kubectl exec fortune-https -c web-server -- mount | grep certs
+tmpfs on /etc/nginx/certs type tmpfs (ro,seclabel,relatime)
+```
+
+##### 환경 변수로 시크릿의 엔트리 노출
+* 볼륨을 사용하는 대신 환경 변수로 시크릿 엔트리의 개별 엔트리를 노출할 수도 있음
+Ex) 환경 변수로서 시크릿 노출하기
+```bash
+$ cat fortune-pod-https.yaml                                            
+...
+spec:
+  containers:
+...
+    env:
+    - name: INTERVAL
+      valueFrom:
+        configMapKeyRef:
+          name: fortune-config
+          key: sleep-interval
+    - name: FOO_SECRET				# 항목 추가
+      valueFrom:					
+        secretKeyRef:
+          name: fortune-https		# 키를 보유하고 있는 시크릿 이름
+          key: foo					# 노출해야 할 시크릿 키
+    volumeMounts:
+...
+```
+* 환경 변수를 통해 시크릿을 노출할 수 있지만 이 기능을 사용하는 것이 가장 좋은 방법은 아님
+	- 어플리케이션 로그에 남겨 의도하지 않게 이를 노출시킬 수 있음
+	- 자식 프로세스는 부모 프로세스의 모든 환경 변수를 상속함
+```
+팁 : 환경 변수를 사용해 시크릿을 컨테이너에 전달하는 방법은 , 의도치 않게 시크릿이 노출될 수 있으므로 
+사용하기 전 한 번 더 생각하기 바란다. 안전을 기하기 위해 항상 시크릿 노출을 위해 secret 볼륨을 사용해라．
 ```
 
 
-335
 ---
 #### 7.5.6 이미지 풀 시크릿
+* 개인 레지스트리에 있는 컨테이너 이미지를 가져오는 데 자격 증명이 필요
 
- 
+##### 도커 허브에서 개인 이미지 레포지터리 사용
+* 도커 허브는 공용 이미지 레포지터리 외에도 개인 레포지터리를 만들 수 있음
+* 개인 스토리지의 이미지를 사용하는 포드를 실행하려면 2가지 작업이 필요
+	- 도커 레지스트리에 대한 자격 증명이 있는 시크릿을 만듦
+	- 포드 매니페스트의 imagePullSecrets 필드에서 시크릿을 참조
+
+##### 도커 레지스트리 인증을 위한 시크릿 생성
+* `kubectl create secret` 명령을 사용하지만 7.5.3절과 다른 유형과 읍션을 사용
+```bash
+$ kubectl create secret docker-registry mydockerhubsecret \
+ --docker-username=myusernarne --docker-password=mypassword \
+ --docker-email=my.email@provider.com
+```
+* generic 시크릿을 작성하는 대신, mydockerhubsecret이라는 docker-registry 시크릿을 작성
+	- 도커 호브 사용자 이름, 비밀 번호, 이메일을 지정
+* `kubectl describe`로 새로 생성된 시크릿의 내용을 검사하면, .dockercfigjson라는 단일 항목이 포함돼 있음을 알 수 있음
+	 
+##### 포드 정의에서 도커 레지스트리 시크릿 사용
+Ex) 이미지 풀 시크릿을 이용한 포드 정의(pod-with-private-image.yaml)
+```yanl
+apiVersion: v1
+kind: Pod
+metadata:
+  name: private-pod
+spec:
+  imagePullSecrets:					# 개인 이미지 스토리지에서 이미지를 가져오는 것을 가능하게 함
+  - name: mydockerhubsecret
+  containers:
+  - image: username/private:tag
+    name: main
+```
+
+##### 모든 포드에 이미지 풀 시크릿을 지정할 필요가 없다
+* 시크릿을 ServiceAccount에 추가하면 이미지 풀 시크릿이 모든 포드에 자동으로 추가됨
+	- 12장 참고(p517)
+
 ---
 ---
 ### 7.6 요약
