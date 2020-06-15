@@ -198,7 +198,7 @@ spec:
 * `$ kubectl get pv` 생성된 PV확인
 
 ###### 참고
-* 미니큐브를 사용하는 경우 mongodb-pv hostpath.yaml경로를 사용해 Pv를 생성한다．
+* 미니큐브를 사용하는 경우 mongodb-pv hostpath.yaml경로를 사용해 PV를 생성한다．
 
 ###### 참고
 * PersistentVolume과 클러스트 노드는 포드，PersistentVolumeClaim과 달리 특정 네임스페이스에 속하지 않는다
@@ -255,14 +255,14 @@ spec:
     - name : mongodb-data
       persistentVolumeClaim:
         claimName: mongodb-pvc		# 포드 볼륨에서 이름으로 PersistentVolumeClaim 참고
-```		
+```
 
 Ex) PVC와 PV를 사용해 포드에서 몽고DB의 문서 확인
 ```
 $ kubectl exec -it mongodb mongo
 > use mystore
 > db.foo.ftnd()
-```	
+```
 
 ---
 ### 6.6 PersistentVolume의 동적 프로비저닝
@@ -271,6 +271,7 @@ $ kubectl exec -it mongodb mongo
 #### 6.6.1 StorageClass 리소스를 통해 사용 가능한 스토리지 유형 정의
 * 사용자가 PersistentVolumeClaim을 생성해 새로운 영구 볼륨을 프로비저닝하려면 관리자가 하나 이상의 스토리지 할당 리소스를 생성해야 함
 	
+
 Ex) StorageClass 정의(storageclass-fast-gcepd.yaml)
 ```yaml
 apiverston: storaee.K8s.io/v1
@@ -281,7 +282,7 @@ porovisioner: Kubernetes.io/gce-pd		# PersistentVolume 프로비저닝에 사용
 parameters:
   type: pd-ssd
   zone: europe-westl-b
-```		
+```
 * StorageClass리소스는 PersistentVolumeClaim이 이 스토리지클래스를 요청할 때, PersistentVolume을 프로비저닝하는 데 사용해야 함
 * 매개 변수는 제공 업쳬에 전달됨
 	- 여기선 구글 컴퓨트 엔진(GCE) 영구 디스크(PD) 공급 업쳬를 사용
@@ -375,7 +376,6 @@ spec:
 	- PVC(명시적으로 지정된 스토리지가 있는 경우 StorageClassName)와 포드(PVC 이름으로 표시된 포드)만 생성
 	- 다른 모든 것은 동적인 __PersistentVolume 제공자__가 처리
 ![PV의 동적 프로비저닝.](./Kubernetes in Action_6장_볼륨/6장_6.3_00_PV의동적프로비저닝.png)
-
 
 ---
 ### 6.7 PersistentVolume and PersistentVolumeClaim[^조대협의 블로그]
