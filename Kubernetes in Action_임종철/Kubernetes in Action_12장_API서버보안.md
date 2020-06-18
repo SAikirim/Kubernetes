@@ -341,7 +341,7 @@ rules:
 	- `$ kubectl create role service-reader --verb=get --verb=list --resource=service -n bar`
 
 ##### 서비스어카운트에 롤을 바인딩
-* 롤을 사용자, 서비스어카운트 또는 그룹(사용자 또는 서비스어카운트)이 될 수 있는 주쳬에 바인딩해야 의미 있음
+* 롤을 사용자, 서비스어카운트 또는 그룹(사용자 또는 서비스어카운트)이 될 수 있는 주제에 바인딩해야 의미 있음
 * `kubectl create rolebinding test --role=service-reader --serviceaccount=foo:default -n foo`
 ```
 참고 : 서비스어카운트 대신 사용자에게 롤을 바인딩하려면 --user 인수를 사용해 사용자 이름을 
@@ -384,15 +384,450 @@ $ curl localhost:8001/api/v1/namespaces/foo/services
     "selfLink": "/api/v1/namespaces/foo/services",
     "resourceVersion": "385370"
   },
+  "items": []			# 아무 서비스도 없기 때문에 항목의 리스트는 비워져있음
+}
+```
+
+##### 롤바인딩에서 다른 네임스페이스의 서비스어카운트 포함하기
+* 롤바인딩 편집으로, 다른 네임스페이스에 있더라도 다른 포드의 서비스어카운트를 추가할 수 있음
+* `$ kubectl edit rolebinding test -n foo`
+Ex) 네임스페이스가 다른 서비스어카운트 참조하기
+```yaml
+...
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: foo
+- kind: ServiceAccount
+  name: default
+  namespace: bar
+```
+* subjects 리스트에 'bar'내용 추가
+* bar 네임스페이스에서 실행 중인 포드 내부에서 foo 네임스페이스의 서비스를 리스트 가능
+
+![다른 네임스페이스의 서비스어카운트](./Kubernetes in Action_12장_API서버보안/12장_06_다른네임스페이스서비스어카운트.png)
+* foo 네임스페이스에 롤바인딩이 있는데, 이는 foo 네임스페이스의 service-reader 롤을 참조하며, foo와 bar 네임스페이스의 기본 서비스어카운트를 바인딩함
+
+---
+#### 12.2.4 클러스터롤과 클러스터롤바인딩 사용
+* 롤과 롤바인딩은 네임스페이스 내에서 사용할 수 있는 리소스
+	- 단일 네임스페이스의 리소스에 상주하고 적용됨
+	- 또한 롤바인딩은 다른 네임스페이스의 서비스어카운트도 참조 가능
+* 클러스터롤은 클러스터 수준의 리소스
+	- 클러스터롤은 네임스페이스와 연관 없는 리소스
+	- 또는 리소스가 아닌 URL,
+	- 또는 개별 네임스페이스 내부에 바인딩되는 공통된 rule로 사용
+
+##### 클러스터 레벨 리소스에 접근 허용
+* 클러스터롤을 사용해 클러스터 수준 리소스에 접근 가능
+* 클러스터에서 포드가 PersistentVolume을 나열하도록 허용하는 방법 실습
+```bash
+$ kubectl create clusterrole pv-reader --verb=get,list --resource=persistentvolumes
+clusterrole.rbac.authorization.k8s.io/pv-reader created
+```
+
+Ex) 클러스터롤의 정의
+```bash
+$ kubectl get clusterrole pv-reader -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole							# 클러스터룰은 네임스페이스가 아님, 그래서 네임스페이스 필드가 없음
+metadata:
+...
+  name: pv-reader
+  resourceVersion: "552390"
+  selfLink: /apis/rbac.authorization.k8s.io/v1/clusterroles/pv-reader
+  uid: d1b7ce98-9ee5-4d80-97cb-c6c82f6d25b2
+rules:										# 룰은 일반 룰의 규칙과 동일
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+```
+* 포드의 서비스어카운트에 바인딩하기 전에 포드가 PersistentVolume을 리스트할 수 있는지 확인
+
+Ex) 리스트 가능 확인
+```bash
+/ # curl localhost:8001/api/v1/persistentvolumes
+...
+  "status": "Failure",
+  "message": "persistentvolumes is forbidden: User \"system:serviceaccount:foo:default\" cannot list resource \"persistentvolumes\" in API group \"\" at the cluster scope",
+  "reason": "Forbidden",
+  "details": {
+    "kind": "persistentvolumes"
+...
+```
+* 디폴트 서비스어카운트는 PersistentVolume을 나열할 수 없음
+```
+참고 : PersistentVolume은 네임스페이스가 없기 때문에 URL에 네임스페이스가 없다．
+```
+
+Ex) 클러스터롤을 서비스어카운트에 바인딩(일반적인 롤바인딩)
+````bash
+$ kubectl create rolebinding pv-test --clusterrole=pv-reader --serviceaccount=foo:default -n foo
+rolebinding.rbac.authorization.k8s.io/pv-test created
+```
+* 바인딩 후 'Ex) 리스트 가능 확인'과 같이 재확인
+	- 리스트를 나열하지 못함
+
+Ex) 롤클러스터 참조하는 롤 바인딩
+````bash
+$ kubectl get rolebinding pv-test -o yaml -n foo                                             1 ↵
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+...
+  name: pv-test
+  namespace: foo
+...
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole						# 이 바인딩은 pv-reader 클러스터롤을 참조함
+  name: pv-reader
+subjects:								# foo 네임스페이스의 디폴트 서비스어카운트를 subjects에 바인드하고 있음
+- kind: ServiceAccount
+  name: default
+  namespace: foo
+```
+* 겉보기에는 YAML이 완벽해 보임
+
+![클러스터룰과 룰바인딩 관계](./Kubernetes in Action_12장_API서버보안/12장_07_클러스터룰과룰바인딩관계.png)
+* 클러스터 수준 리소스에 대한 접근 권한을 부여하려면 항상 클러스터롤바인딩을 사용해야 함
+
+Ex) 바인딩 삭제 후, 클러스터롤바인딩 생성
+```
+$ kubectl delete rolebinding pv-test -n foo
+rolebinding.rbac.authorization.k8s.io "pv-test" deleted
+
+$ kubectl create clusterrolebinding pv-test --clusterrole=pv-reader --serviceaccount=foo:default
+clusterrolebinding.rbac.authorization.k8s.io/pv-test created
+```
+
+Ex) 리스트 가능 재확인
+```bash
+/ # curl localhost:8001/api/v1/persistentvolumes
+{
+  "kind": "PersistentVolumeList",
+  "apiVersion": "v1",
+  "metadata": {
+    "selfLink": "/api/v1/persistentvolumes",
+    "resourceVersion": "560897"
+  },
   "items": []
 }
 ```
+![클러스터룰과 클러스터룰바인딩 관계](./Kubernetes in Action_12장_API서버보안/12장_08_클러스터룰과클러스터룰바인딩관계.png)
+```
+팁 : 롤바인딩은 클러스터롤바인딩을 참조하더라도 클러스터 수준 리소스에 대한 접근 권한을 부여할 수 없다．
+```
+
+##### 비 리소스 URL에 접근 허용
+* API 서버는 비 리소스 URL도 노출함
+	- 이런 URL에는 명시적으로 접근 권한을 부여해야 함
+	- 그렇지 않으면 API 서버가 클라이언트의 요청을 거부
+	- 일반적으로 system:discovery 클러스터롤과 이름이 같은 클러스터롤바인딩을 통해 자동으로 수행됨
+Ex) 기본 system:discovery 클러스터롤
+```bash
+$ kubectl get clusterrole system:discovery -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+...
+  name: system:discovery
+...
+rules:
+- nonResourceURLs:		# 리소스를 참조하는 대신에, 이 룰은 비 리소스 URL을 참조함
+  - /api
+  - /api/*
+  - /apis
+  - /apis/*
+  - /healthz
+  - /livez
+  - /openapi
+  - /openapi/*
+  - /readyz
+  - /version
+  - /version/
+  verbs:				# 이런 URL은 HTTP GET 메소드만이 허용됨
+  - get
+```
+* 이 클러스터롤은 리소스 대신 URL을 참조함
+	- resources 필드 대신에 nonResourceURL 필드가 사용됨
+* 클러스터 수준 리소스와 마찬가지로 비 리소스 URL의 클러스터롤은 클러스터바인팅으로 바인딩해야함
+
+```
+참고 : 비 리소스 URL의 경우 create 또는 update 대신 post, put, patch와 같은 평문의 HTTP 동사
+(verbs가 사용된다. 동사는 소문자로 지정해야 한다．
+```
+
+* system:discovery 클러스터롤은 그에 상응하는 system:discovery 클러스터롤바인딩이 존재
+Ex) 디폴트 system:discovery 클러스터롤바인딩
+```bash
+$ kubectl get clusterrolebinding system:discovery -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+...
+  name: system:discovery
+...
+roleRef:								# 클러스터롤바인딩 system:discovery 클러스터롤을 참조
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:discovery
+subjects:								
+- apiGroup: rbac.authorization.k8s.io	# 인증된 사용자와 클러스터롤을 바인드함
+  kind: Group
+  name: system:authenticated
+```
+
+```
+참고 : 그룹이 인증 플러그인의 도메인에 있다. API 서버가 요청을 수신하면 인증 플러그인을 호출해
+사용자가 속한 그룹 목록을 가져온다. 이 정보는 인증에 사용된다，
+```
+
+Ex) /api URL에 접근
+```
+$ curl -H "Authorization: Bearer $TOKEN1" https://192.168.10.200:6443/api -k
+{
+  "kind": "APIVersions",
+  "versions": [
+    "v1"
+  ],
+  "serverAddressByClientCIDRs": [
+    {
+      "clientCIDR": "0.0.0.0/0",
+      "serverAddress": "192.168.10.200:6443"
+    }
+  ]
+}   
+```
+* 인증된 사용된 사용자만 접근을 허락하기 때문에, 서비스어카운트 토큰을 사용
+* 'kubectl config view' 또는 'kubectl cluster-info'로 api server 주소 확인
+
+##### 특정 네임스페이스의 리소스에 대한 접근 권한을 위한 클러스터를 사용
+Ex) 디폴트 뷰 클러스터롤
+```
+$ kubectl get clusterrole view -o yaml
+...
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+...
+  name: view
+...
+rules:
+- apiGroups:
+  - ""
+  resources:						# 룰은 여기에 있는 리소스에 적용됨(참고: 이들은 모두 네임스페이스 리소스)
+  - configmaps
+  - endpoints
+  - persistentvolumeclaims
+  - persistentvolumeclaims/status
+  - pods
+  - replicationcontrollers
+  - replicationcontrollers/scale
+  - serviceaccounts
+  - services
+  - services/status
+  verbs:							# 클러스터룰의 이름에서 알 수 있듯이 나열된 리소스에 쓸 수는 없고 읽기만 허용
+  - get
+  - list
+  - watch
+...
+```
+* 클러스터롤바인딩에 바인딩된 경우, 나열된 주체는 모든 네임스페이스에서 지정된 리소스를 볼 수 있음
+* 롤바인딩에 바인딩된 경우. 나열된 주체는 롤바인딩의 네임스페이스에 있는 리소스만 볼 수 있음
+
+Ex) 바인딩 전 리소스 확인
+```
+/ # curl localhost:8001/api/v1/pods
+...
+"status": "Failure",
+...
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+...
+  "status": "Failure",
+...
+```
+* 둘다 실패로, 리소스 확인 불가
+
+Ex) 클러스터롤바인딩 생성
+```
+$ kubectl create clusterrolebinding view-test --clusterrole=view --serviceaccount=foo:default
+clusterrolebinding.rbac.authorization.k8s.io/view-test created
+```
+
+Ex) 클러스터롤바인딩 확인
+```
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+...
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+/ # curl localhost:8001/api/v1/namespaces/bar/pods
+...
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+/ # curl localhost:8001/api/v1/pods
+...
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+```
+* 모든 네임스페이스에 적용
+	- /api/v1/pods URL 경로뿐 아니라 모든 네임스페이스에 있는 포드 조회 가능
+
+![클러스터룰과 클러스터룰바인딩](./Kubernetes in Action_12장_API서버보안/12장_09_클러스터룰과클러스터룰바인딩.png)
+
+Ex) 클러스터롤바인딩 삭제후, 롤바인딩으로 대체
+```
+$ kubectl delete clusterrolebinding view-test
+clusterrolebinding.rbac.authorization.k8s.io "view-test" deleted
+$ kubectl create rolebinding view-test --clusterrole=view --serviceaccount=foo:default -n foo
+rolebinding.rbac.authorization.k8s.io/view-test created
+```
+
+Ex) 롤바인딩 리스트 나열 확인
+```
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+...
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+/ # curl localhost:8001/api/v1/pods
+...
+"status": "Failure",
+...
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+...
+  "status": "Failure",
+...
+```
+* foo 네임스페이스에 포드 나열 가능
+	- 모든 및 다른 네임스페이스에선 나열 불가
+
+![클러스터룰과 룰바인딩](./Kubernetes in Action_12장_API서버보안/12장_10_클러스터룰과룰바인딩.png)
+
+##### 롤, 클러스터를, 롤바인딩, 클러스터롤바인딩 조합 요약
+* 특정 사용 사례별로 분류
+![롤과 바인딩 타입](./Kubernetes in Action_12장_API서버보안/12장_11_롤과바인딩타입.png)
+* 룰에 클러스터룰바인딩은 안됨
+
+---
+#### 12.2.5 디폴트 클러스터롤과 클러스터롤바인딩 이해
+* 쿠버네티스는 API 서버가 시작될 때마다 업데이트되는 클러스터를 및 클러스터롤바인딩의 기본 세트를 제공함
+Ex) 모든 클러스터롤바인딩과 클러스터롤 나열하기
+```
+$ kubectl get clusterrolebindings
+NAME                                                   ROLE
+cluster-admin                                          ClusterRole/cluster-admin
+kubeadm:get-nodes                                      ClusterRole/kubeadm:get-nodes
+kubeadm:kubelet-bootstrap                              ClusterRole/system:node-bootstrapper
+kubeadm:node-autoapprove-bootstrap                     ClusterRole/system:certificates.k8s.io:certificatesigningreq
+kubeadm:node-autoapprove-certificate-rotation          ClusterRole/system:certificates.k8s.io:certificatesigningreq
+kubeadm:node-proxier                                   ClusterRole/system:node-proxier
+pv-test                                                ClusterRole/pv-reader
+...
+system:coredns                                         ClusterRole/system:coredns
+system:discovery                                       ClusterRole/system:discovery
+system:kube-controller-manager                         ClusterRole/system:kube-controller-manager
+system:kube-dns                                        ClusterRole/system:kube-dns
+system:kube-scheduler                                  ClusterRole/system:kube-scheduler
+system:node                                            ClusterRole/system:node
+system:node-proxier                                    ClusterRole/system:node-proxier
+system:public-info-viewer                              ClusterRole/system:public-info-viewer
+system:volume-scheduler                                ClusterRole/system:volume-scheduler
+weave-net                                              ClusterRole/weave-net
+
+$ kubectl get clusterroles
+NAME                                                                   CREATED AT
+admin                                                                  2020-06-08T23:39:12Z
+cluster-admin                                                          2020-06-08T23:39:12Z
+edit                                                                   2020-06-08T23:39:12Z
+kubeadm:get-nodes                                                      2020-06-08T23:39:21Z
+pv-reader                                                              2020-06-16T10:20:46Z
+...
+system:controller:ttl-controller                                       2020-06-08T23:39:13Z
+system:coredns                                                         2020-06-08T23:39:24Z
+system:discovery                                                       2020-06-08T23:39:12Z
+system:heapster                                                        2020-06-08T23:39:12Z
+system:kube-aggregator                                                 2020-06-08T23:39:12Z
+system:kube-controller-manager                                         2020-06-08T23:39:12Z
+system:kube-dns                                                        2020-06-08T23:39:12Z
+system:kube-scheduler                                                  2020-06-08T23:39:12Z
+system:kubelet-api-admin                                               2020-06-08T23:39:12Z
+system:node                                                            2020-06-08T23:39:12Z
+system:node-bootstrapper                                               2020-06-08T23:39:12Z
+system:node-problem-detector                                           2020-06-08T23:39:12Z
+system:node-proxier                                                    2020-06-08T23:39:12Z
+system:persistent-volume-provisioner                                   2020-06-08T23:39:12Z
+system:public-info-viewer                                              2020-06-08T23:39:12Z
+system:volume-scheduler                                                2020-06-08T23:39:12Z
+view                                                                   2020-06-08T23:39:12Z
+weave-net                                                              2020-06-08T23:44:42Z
+```
+* 가장 중요한 룰은 view, edit, admin, cluster-admin 클러스터롤임
+	- 사용자 정의의 포드를 사용하는 서비스어카운트에 바운딩되기 위해 존재
+
+##### view 클러스터롤을 통한 리소스 읽기 전용 접근 허용
+* 롤, 롤바인딩, 시크릿을 제외한 네임스페이스내의 대부분 리소스를 읽기 가능
+	- 시크릿에는 인증 토큰이 존재해 위험
+	
+##### edit 클러스터롤을 통한 리소스 수정 허용
+* 네임스페이스의 리소스를 수정 가능
+* 시크릿을 읽고, 수정 가능
+* 롤, 롤바인딩을 보거나 수정 불가
+	- 권한 상승 방지
+
+##### admin 클러스터롤을 통한 네임스페이스 전체 통제 권한 허용
+* 네임스페이스의 리소스를 완벽하게 제어히는 것은 admin 클러스터롤에서 허용
+* ResourceQuotas(14장의 내용)와 네임스페이스 리소스 자체를 제외한 네임스페이스의 리소스를 읽고 수정할 수 있음
+```
+참고 : 권한 상승 문제를 방지하기 위해 API 서버는 사용자가 이미 해당 롤에 나열된 모든 권한(및 동일한 범위을 가지고 있는 경우에만 롤을 만들고 업데이트할 수 있다．
+```
+
+##### cIuster-admin 클러스터롤을 통한 완전한 통제 허용
+* 쿠버네티스 클러스터를 완벽하게 제어하려면 cluster-admin 클러스터롤을 주체에 할당함
+
+##### 그 밖의 디폴트 클러스터롤
+* system：가 접두사로 시작하는 많은 수의 클러스터가 존재
+
+---
+#### 12.2.6 인증 권한을 현명하게 부여하기
+* 기본적으로 네임스페이스의 디폴트 서비스어카운트에는 인증되지 않은 사용자의 권한 이외에는 권한 설정이 없음
+	- 따라서 기본적으로 포드는 클러스터 상태를 볼 수 없음
+* 업무를 수행하는데 필요한 권한만 제공(최소 권한 원칙)
+
+##### 각 포드에 특정한 서비스어카운트 생성
+* 각 포드(또는 복제본 세트)의 특정 서비스어카운트를 작성한 다음 롤비인딩을 통해 맞춤형 롤(또는 클러스터롤)과 연관시키는 것이 좋음
+* 하나의 포드가 포드를 읽을 필요가 있는 반면 다른 포드도 포드를 수정해야 하는 경우, 
+	- 두 개의 서비스어카운트를 작성하고 포드 스펙에서 servtceAccountName 특성을 지정해 해당 포드가 사용하게 함
+	- 두 포드에 필요한 모든 권한을 네임스페이스의 디폴트 서비스어카운트에 추가하지 말 것
+
+##### 어플리케이션 취약점 예상하기
+* 침입자가 클러스터를 점유할 가능성을 줄이는 것을 목적
+	- 다른 누군가가 인증 토큰을 손에 넣읗 수 있으므로, 서비스어카운트에 항상 제약을 두어야함
 
 
 ---
 ---
 ### 12.3 요약
-* 
+* API 서버의 클라이언트에는 사용자와 포드에서 실행 중인 어플리케이션이 모두 포함됨
+* 포드의 어플리케이션은 서비스어카운트와 연관돼 있음
+* 사용자와 서비스어카운트는 모두 그룹과 관련돼 있음
+* 기본적으로 포드는 각 네임스페이스에 자동으로 생성되는 기본 서비스어카운트에서 실행됨
+* 수동으로 추가 서비스 계정을 만들고 포드와 연결할 수 있음
+* 특정 포드에 제한된 시크릿 목록만 마운트할 수 있도록 서비스어카운트를 구성할 수 있음
+* 서비스어카운트를 사용해 이미지 끌어오기 시크릿을 포드에 첨부할 수 있으므포 모든 포드에서 시크릿을 지정할 필요가 없음
+* 롤 및 클러스터롤은 어떤 리소스에서 수행할 수 있는 작업을 정의함
+* 롤바인딩 및 클러스터롤바인딩은 사용자의 롤과 클러스터롤, 그룹 및 서비스어카운트에 바인딩함
+* 각 클러스터에는 기본 클러스터를 및 클러스터롤바인딩이 존재
+
 
 
 ---

@@ -488,7 +488,7 @@ https://kubernetes.io/docs/concepts/cluster-administration/addons
 		+ 포드의 '준비 상태가 변경'되거나 포드의 '레이블이 변경'돼 서비스 범위를 벗어나는 경우에도 엔드포인트 객쳬가 변경됨
 
 ![kube-proxy 네트워크](./Kubernetes in Action_11장_쿠버네티스내부/11장_12_kube-proxy네트워크.png)
-* 네트워크로 보내지기 전에 패킷은 먼저 노드에 설정된 iptables 규칙에 따라 노드A의 커널에 의해 처음 처리됨
+* 네트워크로 보내지기 전에 패킷은 먼저 노드에 설정된 iptables 규칙에 따라 노드의 커널에 의해 처음 처리됨
 	1. 커널은 패킷이 iptables 규칙 중 하나와 일치하는지 확인
 	2. 목적지 IP가 172.30.0.1이고 목적지 포트가 80인 경우, 
 		2.1 패킷의 목적지 IP와 포트는 무작위로 선택된 포드의 IP와 포트 대체돼야 한다고 명령함

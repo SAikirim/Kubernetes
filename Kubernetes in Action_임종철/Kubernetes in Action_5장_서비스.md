@@ -9,7 +9,7 @@
 
 #### 5.1.1 서비스 생성
 
-##### kubecti expose를 통한 서비스 생성
+##### kubectl expose를 통한 서비스 생성
 Ex) kubia-svc.yaml
 ```bash
 kubectl expose deployment hello-world --type=LoadBalancer --name=my-service
@@ -228,7 +228,7 @@ spec:
   port:
     - port:80				
 ```
-* Exte rnalNarne 서비스는 DNS 레벨에서만 구현됨
+* ExternalNarne 서비스는 DNS 레벨에서만 구현됨
 	- 간단히 CNAME DNS 레코드는 서비스를 위해 생성
 	- 서비스로 연결하는 클라이언트는 서비스 프록시를 완전히 통하지 않고 직접 외부서비스로 연결
 	- 이런 이유로 서비스를 위한 이런 타입은 클러스터 IP를 얻지 못함
