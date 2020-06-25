@@ -488,12 +488,271 @@ spec:
     emptyDir:
 ```
 
+Ex) first 컨테이너 id 및 volume 확인(pod-with-shared-volume-fsgroup.yaml) 
+```sh
+$ kubectl exec -it pod-with-shared-volume-fsgroup -c first -- sh
+/ $ id
+uid=1111 gid=0(root) groups=555,666,777
+/ $ ls -l / | grep volume
+drwxrwsrwx    2 root     555              6 Jun 23 15:36 volume
+```
+* 컨테이너가 사용자 id 1111 확인 가능
+* 유효 그룹 ID는 0(루트)이지만 그룹 ID 555, 666, 777도 사용자와 연관됨
+* 포드 정의에서 fsGroup을 555로 설정했기 때문에, 마운트된 볼륨은 그룹 ID 555에 소유됨
+
+Ex) 파일 쓰기 확인
+```sh
+/ $ echo foo > /volume/foo
+/ $ ls -l /volume
+total 4
+-rw-r--r--    1 1111     555              4 Jun 23 15:47 foo
+
+/ $ ls -l /tmp
+total 4
+-rw-r--r--    1 1111     root             4 Jun 23 15:49 foo
+```
+* volume 디렉터리에 생성한 파일은 사용자 ID 1111 및 그룹 ID 555에 소유자로 생성됨
+* 일반적으로 사용자의 유효한 그룹 ID는 사용자가 파일을 만들 때 사용됨
+	- fsGroup 보안 컨텍스트 속성은 프로세스가 볼륨에 파일을 만들 때 사용되만, 볼륨 플러그인에 따라 다를 수 있음
+* supplementalGroups 속성은 사용자와 연관된 추가 그룹 ID 목록을 정의함
+
+---
+---
+### 13.3 포드의 보안 관련 기능 사용 제한하기
+* 컨테이너 보안 컨텍스트를 사용해, 포드 및 컨테이너 실행에 제한 및 확장(노드 권한 확보)이 가능하였음
+* 클러스터 관리자는 하나 이상의 PodSecurityPolicy 리소스를 작성해,
+	- 위에 설명된 보안 관련 기능의 사용을 제한할 수 있음
+	
+---
+#### 13.3.1 PodSecurityPolicy 리소스의 소개
+* 사용자가 포드에서 사용할 수 있거나 사용할 수 없는 보안 관련 기능이 무엇인지 정의하는 클러스터 수준(비네임스페이스) 리소스
+* PodSecurityPolicy 리소스에 구성된 정책을 유지하는 작업은 
+	- API 서버에서 실행하는 PodSecurityPolicy 승인제어 플러그인(admission control plugin)에 의해 수행됨
+* 누군가가 API 서버로 포드 리소스를 게시하면,
+	- PodSecurityPolicy 승인 제어 플러그인은 구성된 PodSecurityPolicies를 기반해,
+	- 포드 정의의 유효성을 검사함
+		+ 포드가 클러스터의 정책을 준수하면 받아 들여지고 etcd에 저장됨
+		+ 정책에 준수하지 않으면 즉시 거부됨
+* 플러그인은 정책에 구성된 기본 값을 바탕으로 포드 리소스를 수정할 수 있음
+
+```
+참고 : 클러스터에서 PodSecurityPolicy 승인 제어 플러그인이 활성화가 안 됐을 수 있다. 다음 예제를 
+실행하기 전에 활성화돼 있는지 확인하자. 미니큐브를 사용한다면 아래 'RabbitMQ와 원자 트랜잭션'을 참고하자．
+```
+```
+- RabbitMQ와 원자 트랜잭션
+미니큐브에서 RBAC 및 PodSecurityPolicy 허용 제어(admission control)활성화하기
+
+이 예제는 미니큐브 버전 v0.19.0을 사용해 실행한다. 이 버전에서는 예제의 일부에서 필요한
+PodSecurityPolicy 승인 제어 플러그인 또는 RBAC 인증을 사용할 수 없다. 한 가지 예제에서는 다른
+사용자로 인증해야 하기 때문에 사용자가 파일에 정의된 기본 인증 플러그인을 활성화해야 한다.
+
+이런 모든 플러그인을 활성화한 상태에서 미니큐브를 실행하려면 사용 중인 버전에 따라 다음 명령을
+사용해야 한다.
+
+$ minikube start --extra-config apiserver.Authentication.PasswordFile.BasicAuthFile=/etc/kubernetes/passwd \
+--extra-config=apiserver.Authorization.Mode=RBAC \
+--extra-config=apiserver.GenericServerRunOptions.AdmissionControl=NamespaceLifecycle,LimitRanger,Service,Account,PersistentVolumeLabe1,DefaultStorageC1ass,ResourceQuota,DefaultTo1erationSeconds,PodSecurityPolicy
+
+명령행 옵션에서 지정한 패스워드 파일을 쟉성하기 전까지 API 서버가 시작되지 않는다．다음은 패스
+워드 파일을 만드는 방법이다．
+
+$ cat <<EOF | minikube ssh sudo tee /etc/kubernetes/passwd
+password,alice,1000,basic-user
+password,bob,2000,privileged-user
+EOF
+
+이 책의 코드 아카이브에서 Chapter13/minikube-with-rbac-and-psp-enabled.sh의 두 명령을
+실행하는 셸 스크립트를 찾을 수 있다，
+```
+
+###### PodSecurityPolicy 활성화 참고
+* https://kubernetes.io/ko/docs/concepts/policy/pod-security-policy/
+	- PodSecurityPolicy 사용하기 위해선 클러스터롤과 클러스터롤바이딩 구성이 필요
+		<!-- 롤 설정을 안해도, PodSecurityPolicy설정이 되는것으로 보임, 자세한 확인 필요!-->
+Ex) PodSecurityPolicy 승인 제어 플러그인(admission control plugin) 활성화
+```bash
+$ cat /etc/kubernetes/manifests/kube-apiserver.yaml
+apiVersion: v1
+kind: Pod
+...
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    - --advertise-address=192.168.10.200
+    - --allow-privileged=true
+    - --authorization-mode=Node,RBAC
+    - --client-ca-file=/etc/kubernetes/pki/ca.crt
+    - --enable-admission-plugins=NodeRestriction,PodSecurityPolicy		# PodSecurityPolicy를 추가하여 활성화
+	...
+```
+
+
+##### PodSecurityPolicy가 할 수 있는 일
+* 포드가 호스트의 IPC, PID 또는 네트워크 네임스페이스를 사용할 수 있는지 여부
+* 포드가 바인딩할 수 있는 호스트 포트의 지정
+* 컨테이너가 실행할 수 있는 사용자 ID의 설정
+* 특권 컨테이너 내에 포드를 생성할 수 있는지 여부
+* 기본적으로 추가돼야 하고 항상 제거돼야 할 커널 기능의 설정
+* 컨테이너가 사용할 수 있는 SELinux 레이블
+* 컨테이너가 쓰기 가능한 루트 파일 시스템을 사용할 수 있는지 여부
+* 컨테이너가 실행할 수 있는 파일 시스템 그룹
+* 포드가 사용할 수 있는 볼륨 유형
+
+##### 샘플 PodSecurityPolicy 살펴보기
+* 포드가 호스트의 IPC, PID 및 네트워크 네임스페이스를 사용하지 못히도록 하는 샘플 사용
+* 특권 컨테이너 및 대부분의 호스트 포트의 사용 제한
+* 컨테이너가 실행할 수 있는 사용자, 그룹 또는 SELinux 그룹에 제약을 설정하지 않음
+
+Ex) 샘플 PodSecurityPolicy(pod-security-policy.yaml)
+```yaml
+apiVersion: policy/v1beta1			# 버전업 되면서 extensions -> policy 로 변경됨
+kind: PodSecurityPolicy
+metadata:
+  name: default
+spec:
+  hostIPC: false			# 컨테이너는 호스트의 IPC, PID, 네트워크 네임스페이스를 사용하지 못하도록 함
+  hostPID: false			#
+  hostNetwork: false		#
+  hostPorts:
+  - min: 10000				# 컨테이너는 10000~11000이나 13000~14000 범위의 호스트 포트에만 바인드할 수 있음
+    max: 11000				#
+  - min: 13000				#
+    max: 14000				#
+  privileged: false				# 컨테이너는 특권(권한) 모드에서 실행할 수 없음
+  readOnlyRootFilesystem: true	# 컨테이너는 읽기 전용 루트 파일 시스템에서만 실행돼야 함
+  runAsUser:				# 컨테이너는 어떤 유저나 그룹이든 실행할 수 있음
+    rule: RunAsAny			#
+  fsGroup:					#
+    rule: RunAsAny			#
+  supplementalGroups:		#
+    rule: RunAsAny			#
+  seLinux:						# 원한다면 어떤 SELinux 그룹을 이용할 수 있음
+    rule: RunAsAny				#
+  volumes:					# 모든 볼륨의 유형이 포드에서 사용될 수 있음
+  - '*'						#
+```
+* PodSecurityPolicy 리소스가 클러스터에 게시되면 API 서버는 더 이상 이전에 사용된 특권 포드를 배포할 수 없게 될 것임
+
+Ex) 작동 확인(pod-security-policy.yaml)
+```bash
+kubectl create -f pod-privileged.yaml
+Error from server (Forbidden): error when creating "pod-privileged.yaml": pods "pod-privileged" is forbidden: unable to validate against any pod security policy: [spec.containers[0].securityContext.privileged: Invalid value: true: Privileged containers are not allowed]
+```
+* 마찬가지로 호스트의 PID, IPC 또는 네트워크 네임스페이스를 사용하려는 포드를 더 이상 배포할 수 없음
+* 또한 정책에서 readOnlyRootFilesystem을 true로 설정하기 때문에 모든 포드의 컨테이너 파일 시스템은 읽기 전용
+	- 컨테이너는 볼륨에만 쓸 수 있음
+	
+---
+#### 13.3.2 runAsUser, fsGroup, supplementaiGroups 정책
+* runAsUser, fsGroup, supplementaiGroups 필드에 RunAsAny 규칙을 사용했기에 컨테이너 실행에 제한이 없음
+* 규칙을 MustRunAs로 변경하면 허용된 ID 범위를 지정 가능
+
+###### MustRunAs 규칙 사용
+* PodSecurityPolicy 리소스를 사용
+	- 사용자 ID 2로만 실행하고 기본 파일 시스템 그룹 및 보조 그룹 ID를 2-10 또는 20-30으로 제한
+
+Ex) 컨테이너가 실행할 수 있는 ID들을 설정하기(psp-must-run-as.yaml)
+```yaml
+apiVersion: extensions/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: default
+spec:
+  hostIPC: false
+  hostPID: false
+  hostNetwork: false
+  hostPorts:
+  - min: 10000
+    max: 11000
+  - min: 13000
+    max: 14000
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsUser:
+    rule: MustRunAs
+    ranges:
+    - min: 2				# 하나의 ID만 지정하도록 min과 max를 동일하게 설정한 하나의 범위를 추가함
+      max: 2				#
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+    - min: 2					# 다수의 범위도 설정할 수 있음
+      max: 10					# 여기서 그룹 ID가 2-10과 20-30을 포함해 설정하고 있음
+    - min: 20					#
+      max: 30					#
+  supplementalGroups:
+    rule: MustRunAs
+    ranges:
+    - min: 2					#
+      max: 10					#
+    - min: 20					#
+      max: 30					#
+  seLinux:
+    rule: RunAsAny
+  volumes:
+  - '*'
+```
+* 포드 스펙(spec)이 해당 입력란 중 하나를 이 범위를 벗어나는 값으로 설정하려고 하면 API 서버에서 포드를 승인하지 않을 것임
+	- 이전 PodSecurityPolic를 삭제하고 위의 코드로 새로운 PodSecurityPolic를 많듬
+```
+참고 : PodSecurityPolicies는 포드를 생성하거나 업데이트할 때만 반영되기 때문에 정책을 변경해도
+기존 포드에는 아무런 영향을 미치지 않는다，
+```
+
+##### 정책의 범위를 벗어나는 runAsUser 포드 배포
+Ex) 컨테이너 사용자 ID 405로 실행 확인
+```
+kubectl create -f pod-as-user-guest.yaml
+Error from server (Forbidden): error when creating "pod-as-user-guest.yaml": pods "pod-as-user-guest" is forbidden: unable to validate against any pod security policy: [spec.containers[0].securityContext.runAsUser: Invalid value: 405: must be in the ranges: [{2 2}]]
+```
+* API 서버는 포드의 실행을 거부
+
+##### 범위를 벗어난 사용자 ID로 설정된 컨테이너 이미지가 있는 포드를 배포
+Ex) USER 지시문을 갖는 도커 파일(kubia-run-as-user-5/Dockerfile)
+```
+FROM node:7
+ADD app.js /app.js
+USER 5
+ENTRYPOINT ["node", "app.js"]
+```
+* runAsUser 속성을 설정하지 않고 포드를 배포하면 사용자 ID가 컨테이너 이미지에 설정됨
+	- 도커 파일의 USER 지시문 사용
+
+Ex) 이미지 배포/실행 및 사용자 ID 확인
+```bash
+$ kubectl run run-as-5 --image luksa/kubia-run-as-user-5 --restart Never
+pod/run-as-5 created
+
+$ kubectl exec run-as-5 -- id
+uid=2(bin) gid=2(bin) groups=2(bin)
+```
+* 컨테이너는 PodSecurityPolicy에서 지정한 ID인 사용자 ID 2로 실행됨 
+* 하드코딩된 사용자 ID를 PodSecurityPolicy에 지정한 ID로 오버라이드하는 데 사용할 수 있음
+
+##### runAsUser 필드에서 MustRunAsNonRoot 사용
+* runAsUser 필드의 경우 MustRunAsNonRoot라는 추가 규칙을 사용할 수 있음
+	- 사용자가 루트로 실행하는 컨테이너를 배포할 수 없음
+	- 컨테이너의 스펙은 runAsUser 필드를 지정해야 하며, 이 필드는 '0'이 될 수 없음(루트 사용자 ID: 0)
+	- 컨테이너 이미지는 자체는 '0'이 아닌 사용자 ID로 실행돼야 함
+	- Ex)
+	```
+	  runAsUser:
+		# 루트 권한없이 컨테이너를 실행해야 한다.
+        rule: 'MustRunAsNonRoot'
+	```
+
+#### 13.3.3 허용, 기본 값, 허용하지 않음 설정
+
+
+
 
 ---
 ---
 ### 13.5 요약
 *
-
+590
 
 
 ---
