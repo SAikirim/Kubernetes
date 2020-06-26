@@ -329,7 +329,7 @@ spec:
 ```
 * CAP_SYS_TIME이라는 기능을 추가해 시스템 시간을 변경할 수 있음
 ```
-참고 : 리눅스 커널 기능에는 일반적으로 CAP- 접두어가 붙는다 . 그러나 포드 스펙에서 지정할 때 접두어를 생략해야 한다．
+참고 : 리눅스 커널 기능에는 일반적으로 CAP- 접두어가 붙는다. 그러나 포드 스펙에서 지정할 때 접두어를 생략해야 한다．
 ```
 Ex) 시스템 시간 변경 확인(pod-add-settime-capability.yaml)
 ```bash
@@ -568,8 +568,8 @@ EOF
 
 ###### PodSecurityPolicy 활성화 참고
 * https://kubernetes.io/ko/docs/concepts/policy/pod-security-policy/
-	- PodSecurityPolicy 사용하기 위해선 클러스터롤과 클러스터롤바이딩 구성이 필요
-		<!-- 롤 설정을 안해도, PodSecurityPolicy설정이 되는것으로 보임, 자세한 확인 필요!-->
+	- PodSecurityPolicy를 특정 사용자 또는 그룹에 사용하기 위해선 클러스터롤과 클러스터롤바인딩 구성이 필요
+	- __클러스터롤과 클러스터롤바인딩을 설정하지 않을 경우, 상반된 PodSecurityPolicy 정책은 '허용'하는 쪽으로 작동하는 것으보 보임__
 Ex) PodSecurityPolicy 승인 제어 플러그인(admission control plugin) 활성화
 ```bash
 $ cat /etc/kubernetes/manifests/kube-apiserver.yaml
@@ -743,16 +743,353 @@ uid=2(bin) gid=2(bin) groups=2(bin)
         rule: 'MustRunAsNonRoot'
 	```
 
+---
 #### 13.3.3 허용, 기본 값, 허용하지 않음 설정
+* 컨테이너는 권한(특권) 모드로 실행될 수도 있고, 그렇지 않을 수도 있음
+* 각 컨테이너에 리눅스 커널 기능을 추가하거나 삭제해, 좀 더 세부적인 권한 구성을 정의할 수 있음
+* 컨테이너의 기능에 영향을 주는 세 가지 필드
+	- allowedCapabilities
+	- defaultAddCapabilities
+	- requiredDropCapabflittes
+
+Ex) PodSecurityPolicy에 기능(capabilities) 설정하기(psp-capabilities.yaml)
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: default
+spec:
+  allowedCapabilities:		# 컨테이너가 SYS_TIME 기능을 사용하는 것을 허용함
+  - SYS_TIME
+  defaultAddCapabilities:	# 모든 컨테이너에 자동으로 CHOWN 기능을 추가함
+  - CHOWN
+  requiredDropCapabilities:	# SYS_ADMIN과 SYS_MODULE 기능을 제거할 것을 컨테이너에게 요구함
+  - SYS_ADMIN
+  - SYS_MODULE
+...
+```	
+```
+참고 : SYS_ADMIN 기능은 다양한 관리 작업을 허용하고 SYS_MODULE 기능은 리눅스 커널 모듈의 로드 및 언로드를 허용한다，
+```	
+
+##### 컨테이너에 추가할 수 있는 기능 지정
+* allowedCapabilities 필드는 컨테이너 작성자가 컨테이너 스펙의 securityContext.capabilities 필드에 추가할 수 있는 기능을 지정하는 데 사용됨
+	- PodSecurityPolicy 승인 제어 플러그인이 활성화된 경우, PodSecurityPolicy에 지정되지 않은 한 기능을 추가할 수 없음
+
+##### 모든 컨테이너에 기능 추가
+* defaultAddCapabilities 필드 아래에 나열된 모든 기능은 배포된 모든 포드의 컨테이너에 추가됨
+	- 사용자가 특정 컨테이너에 이런 기능을 갖기를 원하지 않으면 명시적으로 해당 컨테이너의 스펙에 기능 제거 설정을 해야 함
+
+##### 컨네이너에서 기능 사용 못하게 하기
+* requiredDropCapabilities 필드에 나열된 기능은 모든 컨테이너에서 자동으로 삭제됨
+	- 사용자가 정책의 requiredDropCapabilities 필드에 나열된 기능 중 하나를 명시적으로 추가하는 포드를 생성하려고 한다면 포드의 실행은 거부됨
+
+Ex) 기능 확인
+```bash
+$ kubectl create -f pod-add-sysadmin-capability.yaml
+Error from server (Forbidden): error when creating "pod-add-sysadmin-capability.yaml": pods "pod-add-sysadmin-capability" is forbidden: unable to validate against any pod security policy: [spec.containers[0].securityContext.capabilities.add: Invalid value: "SYS_ADMIN": capability may not be added]
+```
+* allowedCapabilities에 설정되지 않음 기능을 사용하려고해도 포드의 실행은 거부됨
+
+---
+#### 13.3.4 포드가 사용할 수 있는 볼륨의 유형 제한
+* PodSecurityPolicy 리소스는 사용자가 포드에 추가할 수 있는 볼륨 유형을 정의를 할 수 있음
+
+Ex) PSP 스니펫은 오직 특정 유형의 볼륨만 허용함(psp-volumes.yaml)
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: default
+spec:
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  volumes:
+  - emptyDir
+  - configMap
+  - secret
+  - downwardAPI
+  - persistentVolumeClaim
+```
+* __PodSecurityPolicy는 최소한 emptyDir, configMap, secret, downwardAPl, persistentVolumeClaim 볼륨을 허용해야 함__
+* 여러 PodSecurityPolicy 리소스가 있는 경우 포드는 모든 정책에 정의된 모든 볼륨 유형을 사용할 수 있음(모든 볼륨 목록의 통합이 사용됨)
+
+---
+#### 13.3.5 다른 사용자 및 그룹에 다른 PodSecurityPolicies 할당
+* PodSecurityPolicy는 클러스터 수준의 리소스이므로 특정 네임스페이스에 저장하거나 적용할 수 없음
+	- __클러스터롤과 클러스터롤바인딩을 설정하지 않을 경우, 상반된 PodSecurityPolicy 정책은 '허용'하는 쪽으로 작동하는 것으보 보임__
+* 다른 사용자에게 다른 정책을 할당하려면, RBAC 메커니즘을 사용해야 함
+	- 필요한 만큼 정책들을 생성하고 클러스터를 리소스를 만들어, 이름별로 개별 정책을 지정해 개별 사용자 또는 그룹에 정책을 할당할 수 있도록 함
+* 실습 시나리오
+	- 클러스터를 사용하는 앨리스와 밥이라는 2명의 사용자 추가
+	- 앨리스는 제한된(권한이 없는) 포드만 배포 가능 (디폴트 PodSecurityPolicy만 사용하도록 설정)
+	- 밥은 특권 포드도 배포할 수 있도록 허용 ( 두가지 PodSecurityPolicy 사용할 수 있도록 설정)
 
 
+##### 특권 컨테이너를 배포할 수 있는 PodSecurityPolicy 생성하기
+* 권한이 있는 사용자가 특권 컨테이너로 포드를 만들 수 있게 해주는 특별한 PodSecurityPolicy 정의(생성)
+
+Ex) 특권 사용자를 위한 PodSecuriyPolicy(psp-privileged.yaml)
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: privileged		# 이 정책의 이름은 privileged임
+spec:
+  privileged: true		# 특권 컨테이너 실행을 허용함
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  volumes:
+  - '*'
+```
+
+Ex) PodSecurityPolicy 확인
+```bash
+$ kubectl get psp
+NAME         PRIV    CAPS       SELINUX    RUNASUSER   FSGROUP    SUPGROUP   READONLYROOTFS   VOLUMES
+default      false   SYS_TIME   RunAsAny   RunAsAny    RunAsAny   RunAsAny   true             *
+privileged   true               RunAsAny   RunAsAny    RunAsAny   RunAsAny   false            *
+```
+* psp-privileged.yaml를 실행시켜, PodSecurityPolicy 목록 확인
+	- 클러스터에 API 서버에 포스트된 2개의 정책 확인
+
+##### 여러 사용자에게 다른 PodSecurityPolicey 할당하기 위해 RBAC 사용
+* 두 개의 클러스터롤을 만들고 각각 하나의 정책을 사용할 수 있도록 함
+
+Ex) clusterrole 생성(psp-default)
+```bash
+$ kubectl create clusterrole psp-deault --verb=use --resource=podsecuritypolicies --resource-name=default
+clusterrole.rbac.authorization.k8s.io/psp-deault created
+```
+```
+참고 : get, list, watch 또는 이와 유사한 use라는 특별한 동사 구문을 사용하고 있다，
+```
+
+Ex) clusterrole 생성(psp-prtvtleged)
+```bash
+$ kubectl create clusterrole psp-privileged --verb=use --resource=podsecuritypolicies --resource-name=pribileged
+clusterrole.rbac.authorization.k8s.io/psp-privileged created
+```
+
+Ex) clusterrolebinding(authenticated)
+```bash
+$ kubectl create clusterrolebinding psp-all-users --clusterrole=psp-default --group=system:authenticated
+clusterrolebinding.rbac.authorization.k8s.io/psp-all-users createdd
+```
+* 앨리스뿐만 아니라 모든 인증된 사용자에게 psp-default 클러스터롤을 바인드
+	- 승인 제어 플러그인이 아무 정책도 없으면, 아무도 포드를 생성할 수 없음
+
+Ex) clusterrolebinding(bob)
+```bash
+$ kubectl create clusterrolebinding psp-bob --clusterrole=psp-privileged --user=bob
+clusterrolebinding.rbac.authorization.k8s.io/psp-bob created
+```
+* psp-prtvtleged된 클러스터롤만 밥에 바인딩
+* 인증된 사용자인 앨리스는 이제 디폴트 PodSecurityPolicy에 접근할 수 있어야 함
+* 밥은 default PodSecurityPolicies와 previledged PodSecurityPolicies에 모두 접근할 수 있어야 함
+	- 앨리스는 특권 포드를 만들 수 없지만 밥은 만들 수 있어야 함
+	
+##### kubecti을 위한 추가 사용자 생성
+* 책의 부록 A에서는 kubectl을 여러 클러스터와 함께 사용할 수 있는 방법과 여러컨텍스트를 사용하는 방법을 설명함
+	- 컨텍스트에는 클러스터와 통신하는 데 사용되는 사용자 자격증명이 포함함
+
+Ex) 2명의 사용자 추가
+```bash
+$ kubectl config set-credentials alice --username=alice --password=password
+User "alice" set.
+$ kubectl config set-credentials bob --username=bob --password=password
+User "bob" set.
+```
+* 사용자 이름과 함호 자격증명을 설정, 기본 HTTP 인증을 사용함
+	- 다른 인증 방법으로는 토큰, 클라이언트 인증서 등이 있음
+
+###### API 서버 Basic Auth 설정
+참고 : https://coffeewhale.com/kubernetes/authentication/http-auth/2020/05/03/auth02/
+참고 : https://kubernetes.io/docs/reference/access-authn-authz/authentication/
+```bash
+$ echo "password,alice,alice,system:authenticated" > /etc/kubernetes/pki/basic-auth
+# API 서버 설정 파일
+$ sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+# -----[kube-apiserver.yaml]------
+    - kube-apiserver
+    - --allow-privileged=true
+    - --authorization-mode=Node,RBAC
+    # .....
+    - --basic-auth-file=/etc/kubernetes/pki/basic-auth
+```
+
+##### 다른 사용자로 포드 생성
+```bash
+$ kubectl --user alice create -f pod-privileged.yaml
+Error from server (Forbidden): error when creating "pod-privileged.yaml": pods is forbidden: User "alice" cannot create resource "pods" in API group "" in the namespace "default": RBAC: clusterrole.rbac.authorization.k8s.io "psp-default" not found
+```
+<!-- p583, 실습이 재대로 진행되지 않음, 테스트 필요!!! -->
+
+
+
+---
+---
+### 13.4 포드 네트워크 분리
+* 포드 네트워크의 격리에 대한 구성 가능 여부는 클러스터에서 사용되는 컨테이너 네트워킹 플러그인에 달려있음
+	- 네트워킹 플러그인이 이를 지원하면 NetworkPolicy 리소스를 작성해 네트워크 격리를 구성할 수 있음
+* NetworkPolicy는 라벨 셀렉터와 매치되는 포드와 매치된 포드에 액세스할 수 있는 소스나 매치된 포드에 액세스할 수 있는 대상에 적용함
+	- 각각 인그레스 및 Egress 규칙을 통해 구성됨
+```
+참고 : NetworkPolicy의 수신 규칙은 5장에서 논의된 인그레스 리소스와 아무 관련이 없다．
+```
+
+---
+#### 13.4.1 네임스페이스에서 네트워크 격리 사용
+* 포드는 기본적으로 누구든지 액세스할 수 있음
+	- 기본 설정 변경이 필요
+* default-deny NetworkPolicy를 만들어 모든 포드에 연결할 수 없도록 함
+Ex) default-deny NetworkPolicy(network-policy-default-deny.yaml)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector:			# 포드 셀렉터를 비우면 동일한 네임스페이스의 모든 포드와 매치됨
+```
+* 원하는 네임스페이스에서 이 NetworkPolicy를 만들면 아무도 네임스페이스의 모든 포드에 연결할 수 없음
+
+```
+참고 : 클러스터에서 사용되는 CNI 플러그인 또는 다른 유형의 네트워킹 솔루션은 NetworkPolicy를
+지원해야 하며, 그렇지 않으면 포드 간의 연결에 아무런 영향을 미치지 않을 것이다.
+```
+
+---
+#### 13.4.2 네임스페이스의 일부 포드만 서버 포드에 연결하도록 허용
+* 클라이언트가 네임스페이스의 포드에 연결할 수 있게 하려면 포드에 연결할 수 있는 사람을 명시해야 함
+
+Ex) Postgress 포드를 위한 NetworkPolicy(network-policy-postgres.yaml)
+```yaml
+network-policy-postgres.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-netpolicy
+spec:
+  podSelector:				# 이 정책은 app=database 라벨을 갖는 포드의 접근을 보호함
+    matchLabels:			#
+      app: database			#
+  ingress:						#
+  - from:						# app=webserver 라벨을 갖는 포드만 연결을 허용함
+    - podSelector:				#
+        matchLabels:			#
+          app: webserver		#
+    ports:					# 허용할 포트는 5432
+    - port: 5432			#
+```
+* app=webserver 레이블이 있는 포드가 app=database 레이블이 있고 포트가 5432인 포드에 연결하도록 허용
+	- 다른 포드는 데이터베이스 포드에 연결할 수 없음
+
+![네트워크 정책](./Kubernetes in Action_13장_노드와네트워크보안/13장_03_네트워크정책.png)
+
+---
+#### 13.4.3 쿠버네티스 네임스페이스 간 네트워크 격리
+* 네임스페이스 중 하나에서 실행 중인 모든 포드에서 사용할 수 있어야 하는 Shopping Cart 마이크로서비스를 실행
+	- 다른 테넌트가 마이크로서비스에 액세스하지 않게 보호 필요
+
+Ex) 장바구니 포드의 NetworkPolivy(network-policy-cart.yaml)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shoppingcart-netpolicy
+spec:
+  podSelector:					# Microservice=shopping-cart 라벨의 포드에만 적용되는 정책
+    matchLabels:				#
+      app: shopping-cart		#
+  ingress:
+  - from:
+    - namespaceSelector:		# Tenant=mannig 라벨을 갖는 네임스페이스에서 실행 중인 포드만이 마이크로서비스에 접근 가능함
+        matchLabels:			#
+          tenant: manning		#
+    ports:
+    - port: 80
+```
+
+![특정 포드에 접속 허용하는 네트워크 정책](./Kubernetes in Action_13장_노드와네트워크보안/13장_04_특정포드에접속허용하는네트워크정책.png)
+* Shopping Cart 공급자가 다른 테넌트(예: 파트너 회사 중 하나)에 액세스 권한을 부여하려면,
+	- 추가 NetworkPolicy 리소스를 만들거나,
+	- 기존 NetworkPolicy에 인그레스 규칙을 추가해야 함
+```
+참고 : 다중 테넌트 쿠버네티스 클러스터에서는 일반적으로 테넌트가 네임스페이스에 라벨(또는 주석)을 추가할 수 없다. 
+namespaceSelector 기반의 인그레스 규칙을 우회할 수 있다．
+```
+
+---
+#### 13.4.4 CIDR 표기법을 사용한 격리
+* 포드 또는 네임스페이스 셀렉터를 지정해 NetworkPolicy에서 대상 포드에 액세스할 수있는 사용자를 정의하는 대신,
+	- CIDR 표기법으로 IP블록을 지정할 수도 있음
+	
+Ex) 인그레스 규칙에 IP블록 설정하기(network-policy-cidr.yaml)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ipblock-netpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: shopping-cart
+  ingress:
+  - from:
+    - ipBlock:					# 이 인그레스 규칙은 오직 192.168.1.0/24 IP 블록의 클라이언트에서 발생한 트래픽만 허용함
+        cidr: 192.168.1.0/24
+```
+
+---
+#### 13.4.5 포드 세트의 아웃바운드 트래픽 제한
+* 입력 규칙을 사용해 NetworkPolicy의 포드 셀렉터와 일치하는 포드의 인바운드 트래픽을 제한했지만, 
+	- 출력 규칙을 통해 아웃바운드 트래픽을 제한할 수도 있음
+	
+Ex) NetworkPolicy에서 아웃바운드 규칙 사용하기(network-policy-egress.yaml)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-net-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: webserver		# 이 정책은 app=webserver 라벨을 갖는 포드에만 적용됨
+  egress:				# 포드의 아웃바운드 트래픽을 제한함
+  - to:
+    - podSelector:			
+        matchLabels:
+          app: database		# 웹 서버 포드는 오직 app=database 라벨을 갖는 포드에만 연결할 수 있음
+    ports:
+    - port: 5432
+```
+* NetworkPolicy는 app=webserver 라벨이 있는 포드가 데이터베이스 라벨이 app=database 포드만 액세스할 수 있음
 
 
 ---
 ---
 ### 13.5 요약
-*
-590
+* 포드는 자체 네임스페이스 대신 노드의 리눅스 네임스페이스를 사용할 수 있음
+* 컨테이너는 컨테이너 이미지에 정의된 것 대신에 사용자나 그룹으로 실행되도록 구성할 수 있음
+* 컨테이너는 특권 모드 실행될 수 있기 때문에 포드에 노출되지 않은 노드의 장치에 액세스 가능하도록 허용할 수 있음
+* 컨테이너는 읽기 전용으로 실행돼 프로세스가 컨테이너의 파일 시스템에 쓰지 못 하도록 한다
+	- 마운트된 볼륨에만 쓸 수 있음
+* 클러스터 수준의 PodSecurityPolicy 리소스를 생성해 사용자가 노드를 손상시킬 수 있는 포드를 만들지 못하게 할 수 있음
+* PodSecurityPolicy 리소스는 RBAC의 클러스터를 및 클러스터롤바인딩을 사용해 특정 사용자와 연관 지을 수 있음
+* Networkpolicy 리소스는 포드의 인바운드나 아웃바운드 트래픽을 제한하는 데 사용됨
 
 
 ---
