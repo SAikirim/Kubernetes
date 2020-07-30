@@ -469,7 +469,7 @@ https://kubernetes.io/docs/concepts/cluster-administration/addons
 
 ---
 #### 11.5.1 kube-proxy 소개
-* 초기에 kube-proxy는 연결을 기다리는 실제 프폭시였음
+* 초기에 kube-proxy는 연결을 기다리는 실제 프록시였음
 	- userspace 프록시 모드
 * 나중에 성능이 더 우수한 iptables 프록시 모드로 교체됨
 	
