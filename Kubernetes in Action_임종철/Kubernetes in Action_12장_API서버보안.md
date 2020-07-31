@@ -465,7 +465,7 @@ Ex) 리스트 가능 확인
 ```
 
 Ex) 클러스터롤을 서비스어카운트에 바인딩(일반적인 롤바인딩)
-````bash
+```bash
 $ kubectl create rolebinding pv-test --clusterrole=pv-reader --serviceaccount=foo:default -n foo
 rolebinding.rbac.authorization.k8s.io/pv-test created
 ```
