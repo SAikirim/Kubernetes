@@ -265,7 +265,10 @@ sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 	```
 * --discovery-token-ca-cert-hash : root CA 공개키
 
+---
+
 #### Error 발생시
+
 [참고] https://xoit.tistory.com/94
 
 Ex) 오류
@@ -290,6 +293,18 @@ Ex) 오류2
   # echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
   ```
 
+Ex) 오류3
+
+```bash
+[ERROR FileContent--proc-sys-net-ipv4-ip_forward]: /proc/sys/net/ipv4/ip_forward contents are not set to 1
+```
+
+* 해결
+
+  ```bash
+  # echo '1' > /proc/sys/net/ipv4/ip_forward
+  ```
+
   
 
 Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
@@ -297,7 +312,10 @@ Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
 * nftables 백엔드를 사용하면 방화벽 규칙이 중복되어 kube-proxy가 중단된다.
 * 방화벽 확인
 
+---
+
 #### 마지막으로 연결된 노드들의 상태 확인
+
 * kubectl get nodes
 	- STATUS 값이 NotReady 상태인 경우, Pod Network 가 아직 deploy 되기 전일 수 있음
 	- 장시간 기다려도 변경되지 않으면 앞에서 설정한 “Pod Network 추가” 과정이 잘못 됐을 수 있음
