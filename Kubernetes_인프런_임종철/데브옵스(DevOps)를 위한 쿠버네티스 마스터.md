@@ -103,7 +103,7 @@ $ docker run -d -p 80:80 --rm kyj9724/wordpress
 
 * 하드웨어 활용도 극대화
 	- 클러스터의 주변에 자유롭게 이동하여 실행중인 다양한 애플리케이션 구성 요소를 클러스터 노드의 가용 리소스에 최대한 맞춰 서로
-섞고 매치
+	섞고 매치
 	- 노드의 하드웨어 리소스를 최상으로 활용
 	
 * 상태 확인 및 자가 치유
@@ -246,6 +246,7 @@ sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
 * Pod Network 추가 (Installing a Pod network add-on)
 	`kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
+	
 	- Weave Net이라는 포드 네트워크 플러그인 설치
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
 	- root로 위에 명령어를 통해 'config'파일을 만들어야 실행됨
@@ -272,8 +273,24 @@ Ex) 오류
  [ERROR FileContent--proc-sys-net-bridge-bridge-nf-call-iptables]: /proc/sys/net/bridge/bridge-nf-call-iptables contents are not set to 1
 ```
 * 해결
-	- echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
-	- kubeadm init(마스터에서 발생시 사용)
+  - echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+  - kubeadm init(마스터에서 발생시 사용)
+
+Ex) 오류2
+
+```bash
+# echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+-bash: /proc/sys/net/bridge/bridge-nf-call-iptables: no such file or directory
+```
+
+* 해결
+
+  ```bash
+  # modprobe br_netfilter
+  # echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+  ```
+
+  
 
 Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
 * nftables 백엔드는 현재 kubeadm 패키지와 호환되지 않는다.
@@ -349,7 +366,7 @@ $ kubeadm join <Kubernetes API Server:PORT> --token <Token 값> --discovery-toke
 	- 요약: https ://cloud.google.com/gcp/getting-started/?hl=ko를 접속해서 "콘솔"로 접속하면 가입 오류 없이 회원 가입 가능
 2. 회원가입 시 카드 정보 오류가 발생하는 경우
 	- 회원가입 시 카드 정보 오류가 발생하는 경우 모바일로 접속해서 등록하면 회원 가입 가능한 경우가 있음
-3 사용할 수 없는 결제 정보인 경우
+	3 사용할 수 없는 결제 정보인 경우
 	- 다른 ID 를 새로 생성하면 해결되는 경우가 있음
 
 #### GCP 프로젝트 생성시 유의사항
@@ -572,6 +589,7 @@ node/minikube   Ready    master   35m   v1.18.0   172.17.0.2    <none>        Ub
 ⚫ 컴포넌트끼리 서로 직접 통신 X
 ⚫ 때문에 etcd와 통신하는 유일한 컴포넌트 API 서버
 ⚫ RESTful API를 통해 클러스터 상태를 쿼리,수정할 수 있는 기능 제공
+
 * API 서버의 구체적인 역할
 	➢ 인증 플러그인을 사용한 클라이언트 인증
 	➢ 권한 승인 플러그인을 통한 클라이언트 인증
@@ -693,19 +711,19 @@ get key1
 		+ 컨테이너 살았는지 판단하고 다시 시작하는 기능
 		+ 컨테이너의 상태를 스스로 판단하여 교착 상태에 빠진 컨테이너를 재시작
 		+ 버그가 생겨도 높은 가용성을 보임
-
+		
 	- Readiness Probe
 		+ 포드가 준비된 상태에 있는지 확인하고 정상 서비스를 시작하는 기능
 		+ 포드가 적절하게 준비되지 않은 경우 로드밸런싱을 하지 않음
-	- Startup Probe
-		+ 애플리케이션의 시작시기 확인하여 가용성을 높이는 기능
-		+ Liveness와 Readiness의 기능을 비활성화
+				- Startup Probe
+					+ 애플리케이션의 시작시기 확인하여 가용성을 높이는 기능
+					+ Liveness와 Readiness의 기능을 비활성화
 			- 컨테이너가 시작하는데, 위의 기능들이 활성화되어 있으면, 시작이 늦어질 것임 또는 부팅이 오래 걸리는 컨테이너를 위해 사용
 
 #### 라이브니스 레디네스 프로브 구성
 * Liveness 커맨드 설정 파일 존재 여부 확인
 	- 성공: 0 / 실패: 그 외 값
-Ex) pods/probe/exec-liveness.yaml 
+	Ex) pods/probe/exec-liveness.yaml 
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -732,7 +750,7 @@ spec:
 
 * Liveness 웹 설정 http 요청 확인
 	- 성공: 200이상 400미만 / 실패: 그 외 값
-Ex) pods/probe/http-liveness.yaml 
+	Ex) pods/probe/http-liveness.yaml 
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -792,7 +810,7 @@ spec:
 	- 30 번을 검사하며 10 초 간격으로 수행
 	- 300 30 10 초 후에도 포드가 정상 동작하지 않는 경우 종료
 	- 300 초 동안 포드가 정상 실행되는 시간을 벌어줌
-Ex) Startup Probe 예제 
+	Ex) Startup Probe 예제 
 ```yaml
 ~생략~
     ports:
