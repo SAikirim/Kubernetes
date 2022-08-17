@@ -238,14 +238,16 @@ sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
 #### 클러스터를 사용 초기 세팅(마스터 노드에서만 할 것)
 * 다음을 일반 사용자 계정으로 실행 콘솔에 출력된 메시지를 복붙
-	```
+	```bash
 	mkdir -p $HOME/.kube
 	sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 	sudo chown $(id -u):$(id -g) $HOME/.kube/config
 	```
 
 * Pod Network 추가 (Installing a Pod network add-on)
-	`kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
+	```bash
+	kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+	```
 	
 	- Weave Net이라는 포드 네트워크 플러그인 설치
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
