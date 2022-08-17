@@ -252,8 +252,16 @@ sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 	- Weave Net이라는 포드 네트워크 플러그인 설치
 	- 이것을 잘해야 노드 추가 명령어가 잘 실행됨
 	- root로 위에 명령어를 통해 'config'파일을 만들어야 실행됨
+	
 * 컨테이너 네트워크 인터페이스(CNI) 기반 Pod 네트워크 애드온으로 Pod가 서로 통신할 수 있음
 	- 네트워크를 설치하기 전에 클러스터 DNS(CoreDNS)가 시작되지 않음
+	
+* 기타 CNI
+ ```bash
+  kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+ ```
+
+
 ###### 참고 : https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/
 
 
@@ -309,10 +317,44 @@ Ex) 오류3
 
   
 
-Ex) iptables 툴이 nftables 백엔드를 사용하지 않아야 함.
+Ex) 오류 4 (iptables 툴이 nftables 백엔드를 사용하지 않아야 함.)
 * nftables 백엔드는 현재 kubeadm 패키지와 호환되지 않는다.
 * nftables 백엔드를 사용하면 방화벽 규칙이 중복되어 kube-proxy가 중단된다.
-* 방화벽 확인
+* 방화벽 확인(iptables, firewalld 모두 확인 필요)
+
+Ex) 오류 5
+
+```bahs
+this version of kubeadm only supports deploying clusters with the control plane version >= 1.23.0. Current version: v1.20.15
+```
+
+* 해결
+
+  ```
+  https://kubernetes.io/ko/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/
+  ```
+
+* 쿠버네티스 업데이드 또는 재설치
+
+Ex) 오류 6 (container runtime is not running)
+
+```bash
+...
+[preflight] Running pre-flight checks
+error execution phase preflight: [preflight] Some fatal errors occurred:
+	[ERROR CRI]: container runtime is not running: output: time="2020-09-24T11:49:16Z" level=fatal msg="getting status of runtime failed: rpc error: code = Unimplemented desc = unknown service runtime.v1alpha2.RuntimeService"
+, error: exit status 1
+```
+
+* 해결
+
+  ```bash
+  rm /etc/containerd/config.toml
+  systemctl restart containerd
+  kubeadm init
+  ```
+
+  
 
 ---
 
